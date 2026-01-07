@@ -72,6 +72,9 @@ jobs:
         run: cargo xtask build-capture-qt
         shell: pwsh
 
+      - name: Build Rust Wrapper
+        run: cargo build --release -p capture-engine
+
       - name: Build OCR Sidecar
         uses: ./.github/actions/build-ocr
 
