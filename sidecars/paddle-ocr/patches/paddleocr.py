@@ -34,10 +34,10 @@ else:
     BASE = SCRIPT_DIR / 'venv' / 'lib' / PY_VERSION / 'site-packages' / 'paddleocr'
 
 def check_base():
+    global BASE
     if not os.path.exists(BASE):
         # Fallback check for case sensitivity or different layout
         if sys.platform == "win32" and os.path.exists(SCRIPT_DIR / 'venv' / 'lib' / 'site-packages' / 'paddleocr'):
-             global BASE
              BASE = SCRIPT_DIR / 'venv' / 'lib' / 'site-packages' / 'paddleocr'
         
         if not os.path.exists(BASE):

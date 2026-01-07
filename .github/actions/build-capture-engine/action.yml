@@ -53,7 +53,12 @@ runs:
       shell: pwsh
       run: cargo xtask build-capture-qt
 
-    - name: Build Rust Wrapper (Non-Linux)
-      if: runner.os != 'Linux'
+    - name: Build Rust Wrapper (Unix)
+      if: runner.os != 'Windows' && runner.os != 'Linux'
       shell: bash
+      run: cargo build --release -p capture-engine
+
+    - name: Build Rust Wrapper (Windows)
+      if: runner.os == 'Windows'
+      shell: pwsh
       run: cargo build --release -p capture-engine
