@@ -1,17 +1,40 @@
-use anyhow::Result;
-use image::DynamicImage;
+use anyhow::{anyhow, Context, Result};
+use fs2::FileExt;
+use std::fs::{self, File};
+use std::path::PathBuf;
 
-pub fn optimize_for_ai(image_data: &[u8]) -> Result<Vec<u8>> {
-    // 1. Load image
-    let img = image::load_from_memory(image_data)?;
-    
-    // 2. Resize if too large (saving tokens/bandwidth)
-    let resized = img.resize(1024, 1024, image::imageops::FilterType::Lanczos3);
-    
-    // 3. Convert back to bytes (e.g., JPEG)
-    let mut output = Vec::new();
-    let mut cursor = std::io::Cursor::new(&mut output);
-    resized.write_to(&mut cursor, image::ImageOutputFormat::Jpeg(80))?;
-    
-    Ok(output)
+pub struct InstanceLock {
+    file: File,
+    path: PathBuf,
+}
+
+impl InstanceLock {
+    pub fn try_acquire(app_name: &str) -> Result<Self> {
+        let dir = dirs::runtime_dir()
+            .or_else(dirs::cache_dir)
+            .context("Failed to resolve lock directory")?;
+        
+        fs::create_dir_all(&dir)?;
+        let path = dir.join(format!("{}.lock", app_name));
+
+        let file = fs::OpenOptions::new()
+            .read(true)
+            .write(true)
+            .create(true)
+            .open(&path)?;
+
+        // Try to lock exclusively. If it fails, another instance exists.
+        file.try_lock_exclusive()
+            .map_err(|_| anyhow!("App is already running (Locked at {:?})", path))?;
+
+        Ok(Self { file, path })
+    }
+}
+
+impl Drop for InstanceLock {
+    fn drop(&mut self) {
+        let _ = self.file.unlock();
+        // Optional: Remove file, though keeping it is harmless
+        let _ = fs::remove_file(&self.path); 
+    }
 }
