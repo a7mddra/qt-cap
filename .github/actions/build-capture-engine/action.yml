@@ -10,16 +10,13 @@ runs:
     - name: Install Rust
       uses: dtolnay/rust-toolchain@stable
 
-    # --- Linux (Docker) ---
     - name: Build Linux Artifacts (Docker)
       if: runner.os == 'Linux'
       shell: bash
       run: |
         docker build -t spatial-builder -f sidecars/qt-capture/Dockerfile .
-        # Build both Qt and Rust wrapper inside Docker
         docker run --rm -v $PWD:/build -w /build spatial-builder bash -c "cargo xtask build-capture-qt && cargo build --release -p capture-engine"
 
-    # --- macOS ---
     - name: Install Qt (macOS)
       if: runner.os == 'macOS'
       shell: bash
@@ -27,7 +24,6 @@ runs:
         brew install qt@6
         echo "Qt6_DIR=$(brew --prefix qt@6)" >> $GITHUB_ENV
 
-    # --- Windows ---
     - name: Install Qt (Windows)
       if: runner.os == 'Windows'
       uses: jurplel/install-qt-action@v4
@@ -42,7 +38,6 @@ runs:
       if: runner.os == 'Windows'
       uses: ilammy/msvc-dev-cmd@v1
 
-    # --- Native Build (Non-Linux) ---
     - name: Build Qt Native (Unix - No Docker)
       if: runner.os == 'macOS'
       shell: bash

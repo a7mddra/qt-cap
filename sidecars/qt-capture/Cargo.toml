@@ -12,4 +12,3 @@ anyhow = "1.0"
 sys-display-hotplug = { path = "../../crates/sys-display-hotplug" }
 sys-single-instance = { path = "../../crates/sys-single-instance" }
 sys-shutter-suppressor = { path = "../../crates/sys-shutter-suppressor" }
-

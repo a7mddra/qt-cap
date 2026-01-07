@@ -22,18 +22,23 @@
 #endif
 #include <cmath>
 #if defined(Q_OS_LINUX)
-class PortalHelper : public QObject {
+class PortalHelper : public QObject
+{
     Q_OBJECT
 public:
     QString savedUri;
     bool success = false;
 
 public slots:
-    void handleResponse(uint response, const QVariantMap &results) {
-        if (response == 0) {
+    void handleResponse(uint response, const QVariantMap &results)
+    {
+        if (response == 0)
+        {
             savedUri = results.value("uri").toString();
             success = !savedUri.isEmpty();
-        } else {
+        }
+        else
+        {
             qWarning() << "Portal request failed (Response Code:" << response << ")";
             success = false;
         }
@@ -49,13 +54,17 @@ class ScreenGrabberUnix : public ScreenGrabber
 public:
     ScreenGrabberUnix(QObject *parent = nullptr) : ScreenGrabber(parent) {}
 
-    std::vector<CapturedFrame> captureAll() override {
+    std::vector<CapturedFrame> captureAll() override
+    {
 #if defined(Q_OS_LINUX)
         QString sessionType = qgetenv("XDG_SESSION_TYPE").toLower();
-        if (sessionType == "wayland") {
+        if (sessionType == "wayland")
+        {
             qDebug() << "Wayland session detected, using Portal capture.";
             return captureWayland();
-        } else {
+        }
+        else
+        {
             qDebug() << "X11 session detected, using standard capture.";
             return captureStandard();
         }
@@ -66,18 +75,22 @@ public:
     }
 
 private:
-    std::vector<CapturedFrame> captureStandard() {
+    std::vector<CapturedFrame> captureStandard()
+    {
         std::vector<CapturedFrame> frames;
         const auto screens = QGuiApplication::screens();
         int index = 0;
 
-        for (QScreen* screen : screens) {
-            if (!screen) continue;
+        for (QScreen *screen : screens)
+        {
+            if (!screen)
+                continue;
             QPixmap pixmap = screen->grabWindow(0);
-            if (pixmap.isNull()) continue;
+            if (pixmap.isNull())
+                continue;
 
             CapturedFrame frame;
-            frame.image = pixmap.toImage(); 
+            frame.image = pixmap.toImage();
             frame.geometry = screen->geometry();
             frame.devicePixelRatio = screen->devicePixelRatio();
             frame.image.setDevicePixelRatio(frame.devicePixelRatio);
@@ -90,16 +103,17 @@ private:
     }
 
 #if defined(Q_OS_LINUX)
-    std::vector<CapturedFrame> captureWayland() {
+    std::vector<CapturedFrame> captureWayland()
+    {
         std::vector<CapturedFrame> frames;
-        
+
         QDBusInterface portal(
             "org.freedesktop.portal.Desktop",
             "/org/freedesktop/portal/desktop",
-            "org.freedesktop.portal.Screenshot"
-        );
+            "org.freedesktop.portal.Screenshot");
 
-        if (!portal.isValid()) {
+        if (!portal.isValid())
+        {
             qCritical() << "Portal interface not found.";
             return frames;
         }
@@ -107,10 +121,11 @@ private:
         QString token = QUuid::createUuid().toString().remove('{').remove('}').remove('-');
         QVariantMap options;
         options["handle_token"] = token;
-        options["interactive"] = false; 
+        options["interactive"] = false;
 
         QDBusReply<QDBusObjectPath> reply = portal.call("Screenshot", "", options);
-        if (!reply.isValid()) {
+        if (!reply.isValid())
+        {
             qCritical() << "Portal call failed:" << reply.error().message();
             return frames;
         }
@@ -120,48 +135,52 @@ private:
         QDBusConnection::sessionBus().connect(
             "org.freedesktop.portal.Desktop", reply.value().path(),
             "org.freedesktop.portal.Request", "Response",
-            &helper, SLOT(handleResponse(uint, QVariantMap))
-        );
+            &helper, SLOT(handleResponse(uint, QVariantMap)));
         QObject::connect(&helper, &PortalHelper::finished, &loop, &QEventLoop::quit);
-        
-        // Safety Timeout: 5 seconds
+
         QTimer::singleShot(5000, &loop, &QEventLoop::quit);
-        
+
         loop.exec();
 
-        if (!helper.success) {
-             qWarning() << "Portal request failed or timed out.";
-             return frames;
+        if (!helper.success)
+        {
+            qWarning() << "Portal request failed or timed out.";
+            return frames;
         }
 
         QString localPath = QUrl(helper.savedUri).toLocalFile();
         QImage fullDesktop(localPath);
-        
-        if (!QFile::remove(localPath)) {
+
+        if (!QFile::remove(localPath))
+        {
             qWarning() << "Failed to remove temporary portal file:" << localPath;
         }
 
-        if (fullDesktop.isNull()) {
+        if (fullDesktop.isNull())
+        {
             qCritical() << "Downloaded image is null.";
             return frames;
         }
 
         QRect logicalBounds;
-        for (QScreen* screen : QGuiApplication::screens()) {
+        for (QScreen *screen : QGuiApplication::screens())
+        {
             logicalBounds = logicalBounds.united(screen->geometry());
         }
 
         double scaleFactor = 1.0;
-        if (logicalBounds.width() > 0) {
+        if (logicalBounds.width() > 0)
+        {
             scaleFactor = (double)fullDesktop.width() / (double)logicalBounds.width();
         }
-        
-        qDebug() << "Capture Info: Image" << fullDesktop.size() 
-                 << "Logical" << logicalBounds 
+
+        qDebug() << "Capture Info: Image" << fullDesktop.size()
+                 << "Logical" << logicalBounds
                  << "Scale" << scaleFactor;
 
         int index = 0;
-        for (QScreen* screen : QGuiApplication::screens()) {
+        for (QScreen *screen : QGuiApplication::screens())
+        {
             QRect geo = screen->geometry();
 
             int cropX = std::round((geo.x() - logicalBounds.x()) * scaleFactor);
@@ -169,10 +188,14 @@ private:
             int cropW = std::round(geo.width() * scaleFactor);
             int cropH = std::round(geo.height() * scaleFactor);
 
-            if (cropX < 0) cropX = 0;
-            if (cropY < 0) cropY = 0;
-            if (cropX + cropW > fullDesktop.width()) cropW = fullDesktop.width() - cropX;
-            if (cropY + cropH > fullDesktop.height()) cropH = fullDesktop.height() - cropY;
+            if (cropX < 0)
+                cropX = 0;
+            if (cropY < 0)
+                cropY = 0;
+            if (cropX + cropW > fullDesktop.width())
+                cropW = fullDesktop.width() - cropX;
+            if (cropY + cropH > fullDesktop.height())
+                cropH = fullDesktop.height() - cropY;
 
             QImage screenImg = fullDesktop.copy(cropX, cropY, cropW, cropH);
             screenImg.setDevicePixelRatio(scaleFactor);
@@ -194,9 +217,10 @@ private:
 };
 
 #if defined(Q_OS_LINUX)
-#include "Shutter_Linux.moc" // Note: This needs to match the filename. CMake usually generates .moc files based on source name.
+#include "Shutter_Linux.moc"
 
-extern "C" ScreenGrabber* createUnixEngine(QObject* parent) {
+extern "C" ScreenGrabber *createUnixEngine(QObject *parent)
+{
     return new ScreenGrabberUnix(parent);
 }
 #endif

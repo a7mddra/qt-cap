@@ -26,10 +26,6 @@ SquiggleCanvas::SquiggleCanvas(const QImage &background, QWidget *parent)
     setCursor(Qt::CrossCursor);
     setContentsMargins(0, 0, 0, 0);
 
-    // Don't set fixed size - let parent (OverlayWindow) control our geometry
-    // The paintEvent will scale the background image to fit our actual size
-    // This ensures proper display at any DPI scale factor
-
     m_animation = new QPropertyAnimation(this, "gradientOpacity");
     m_animation->setDuration(200);
     m_animation->setStartValue(0.0);
@@ -90,11 +86,10 @@ void SquiggleCanvas::mouseReleaseEvent(QMouseEvent *event)
         m_path.lineTo(m_smoothedPoint);
         m_isDrawing = false;
         m_hasDrawing = true;
-        
-        // IPC: Tell Rust to mute audio before capture
+
         std::cout << "REQ_MUTE" << std::endl;
         std::cout.flush();
-        
+
         cropAndFinish();
     }
 }
@@ -185,7 +180,8 @@ void SquiggleCanvas::cropAndFinish()
     qreal logicalH = m_maxY - m_minY;
 
     qreal dpr = m_background.devicePixelRatio();
-    if (dpr <= 0.0) dpr = 1.0;
+    if (dpr <= 0.0)
+        dpr = 1.0;
 
     int physX = qRound(logicalX * dpr);
     int physY = qRound(logicalY * dpr);

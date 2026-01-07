@@ -11,5 +11,4 @@ runs:
     - name: Build OCR Engine
       shell: bash
       run: |
-        # Ensure cargo is in path
         cargo xtask build-ocr

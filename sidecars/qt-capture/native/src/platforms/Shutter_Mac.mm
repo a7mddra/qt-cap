@@ -24,9 +24,6 @@ public:
     std::vector<CapturedFrame> captureAll() override {
         std::vector<CapturedFrame> frames;
 
-        // --------------------------------------------------------------------
-        // 1. Permission Check
-        // --------------------------------------------------------------------
         if (QOperatingSystemVersion::current() >= QOperatingSystemVersion::MacOSCatalina) {
             if (!CGPreflightScreenCaptureAccess()) {
                 CGRequestScreenCaptureAccess();

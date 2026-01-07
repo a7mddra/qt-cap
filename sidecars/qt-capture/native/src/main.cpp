@@ -31,25 +31,34 @@ int main(int argc, char *argv[])
 
 #ifdef Q_OS_WIN
     HMODULE user32 = LoadLibraryW(L"user32.dll");
-    if (user32) {
+    if (user32)
+    {
         using SetProcessDpiAwarenessContextFn = BOOL(WINAPI *)(HANDLE);
         auto fn = reinterpret_cast<SetProcessDpiAwarenessContextFn>(GetProcAddress(user32, "SetProcessDpiAwarenessContext"));
-        if (fn) {
+        if (fn)
+        {
             fn(reinterpret_cast<HANDLE>(-4));
-        } else {
+        }
+        else
+        {
             HMODULE shcore = LoadLibraryW(L"Shcore.dll");
-            if (shcore) {
+            if (shcore)
+            {
                 using SetProcessDpiAwarenessFn = HRESULT(WINAPI *)(int /*PROCESS_DPI_AWARENESS*/);
                 auto fn2 = reinterpret_cast<SetProcessDpiAwarenessFn>(GetProcAddress(shcore, "SetProcessDpiAwareness"));
-                if (fn2) {
+                if (fn2)
+                {
                     constexpr int PROCESS_PER_MONITOR_DPI_AWARE = 2;
                     fn2(PROCESS_PER_MONITOR_DPI_AWARE);
                 }
                 FreeLibrary(shcore);
-            } else {
+            }
+            else
+            {
                 using SetProcessDPIAwareFn = BOOL(WINAPI *)();
                 auto fn3 = reinterpret_cast<SetProcessDPIAwareFn>(GetProcAddress(user32, "SetProcessDPIAware"));
-                if (fn3) fn3();
+                if (fn3)
+                    fn3();
             }
         }
         FreeLibrary(user32);
@@ -61,13 +70,12 @@ int main(int argc, char *argv[])
 #endif
 
     QApplication app(argc, argv);
-    
+
     app.setApplicationName(APP_NAME);
     app.setOrganizationName(ORG_NAME);
     app.setApplicationVersion(APP_VERSION);
     app.setQuitOnLastWindowClosed(true);
 
-    // Parse command line arguments
     QCommandLineParser parser;
     parser.setApplicationDescription("Screen capture tool with selection modes");
     parser.addHelpOption();
@@ -85,7 +93,6 @@ int main(int argc, char *argv[])
 
     parser.process(app);
 
-    // Determine capture mode (rectangle takes precedence if both specified)
     CaptureMode captureMode = CaptureMode::Freeshape;
     if (parser.isSet(rectangleOption))
     {
@@ -96,7 +103,7 @@ int main(int argc, char *argv[])
     {
         qDebug() << "Capture mode: Freeshape";
     }
-    
+
     ScreenGrabber *engine = nullptr;
 #ifdef Q_OS_WIN
     engine = createWindowsEngine(&app);

@@ -26,10 +26,6 @@ RectangleCanvas::RectangleCanvas(const QImage &background, QWidget *parent)
     setCursor(Qt::CrossCursor);
     setContentsMargins(0, 0, 0, 0);
 
-    // Don't set fixed size - let parent (OverlayWindow) control our geometry
-    // The paintEvent will scale the background image to fit our actual size
-    // This ensures proper display at any DPI scale factor
-
     m_animation = new QPropertyAnimation(this, "gradientOpacity");
     m_animation->setDuration(200);
     m_animation->setStartValue(0.0);
@@ -83,11 +79,10 @@ void RectangleCanvas::mouseReleaseEvent(QMouseEvent *event)
         m_endPoint = event->pos();
         m_isDrawing = false;
         m_hasSelection = true;
-        
-        // IPC: Tell Rust to mute audio before capture
+
         std::cout << "REQ_MUTE" << std::endl;
         std::cout.flush();
-        
+
         cropAndFinish();
     }
 }
@@ -110,22 +105,18 @@ void RectangleCanvas::paintEvent(QPaintEvent *event)
     painter.setRenderHint(QPainter::Antialiasing, true);
     painter.setRenderHint(QPainter::SmoothPixmapTransform, true);
 
-    // Draw background
     painter.drawImage(rect(), m_background);
 
-    // Draw gradient overlay
     QLinearGradient gradient(0, 0, 0, height());
     gradient.setColorAt(0.0, QColor(0, 0, 0, static_cast<int>(128 * m_gradientOpacity)));
     gradient.setColorAt(1.0, QColor(0, 0, 0, 0));
     painter.setCompositionMode(QPainter::CompositionMode_SourceOver);
     painter.fillRect(rect(), gradient);
 
-    // Draw selection rectangle if drawing
     if (m_isDrawing || m_hasSelection)
     {
         QRectF selectionRect = QRectF(m_startPoint, m_endPoint).normalized();
 
-        // Draw dark overlay outside selection
         QPainterPath overlayPath;
         overlayPath.addRect(rect());
         QPainterPath selectionPath;
@@ -133,13 +124,11 @@ void RectangleCanvas::paintEvent(QPaintEvent *event)
         overlayPath = overlayPath.subtracted(selectionPath);
         painter.fillPath(overlayPath, QColor(0, 0, 0, 100));
 
-        // Draw selection border
         QPen borderPen(Qt::white, 2, Qt::SolidLine);
         painter.setPen(borderPen);
         painter.setBrush(Qt::NoBrush);
         painter.drawRect(selectionRect);
 
-        // Draw corner handles
         const qreal handleSize = 8.0;
         painter.setBrush(Qt::white);
         painter.setPen(Qt::NoPen);
@@ -148,15 +137,13 @@ void RectangleCanvas::paintEvent(QPaintEvent *event)
             selectionRect.topLeft(),
             selectionRect.topRight(),
             selectionRect.bottomLeft(),
-            selectionRect.bottomRight()
-        };
+            selectionRect.bottomRight()};
 
         for (const auto &corner : corners)
         {
             painter.drawEllipse(corner, handleSize / 2, handleSize / 2);
         }
 
-        // Draw dimensions text
         int w = qRound(selectionRect.width());
         int h = qRound(selectionRect.height());
         QString dimText = QString("%1 × %2").arg(w).arg(h);
@@ -170,18 +157,15 @@ void RectangleCanvas::paintEvent(QPaintEvent *event)
         QRectF textRect = fm.boundingRect(dimText);
         textRect.moveCenter(QPointF(selectionRect.center().x(), selectionRect.bottom() + 20));
 
-        // Draw text background
         QRectF bgRect = textRect.adjusted(-8, -4, 8, 4);
         painter.setBrush(QColor(0, 0, 0, 180));
         painter.setPen(Qt::NoPen);
         painter.drawRoundedRect(bgRect, 4, 4);
 
-        // Draw text
         painter.setPen(Qt::white);
         painter.drawText(textRect, Qt::AlignCenter, dimText);
     }
 
-    // Draw crosshair cursor when not drawing
     if (!m_isDrawing && !m_hasSelection)
     {
         const qreal crosshairSize = 20.0;
@@ -208,7 +192,8 @@ void RectangleCanvas::cropAndFinish()
     QRectF selectionRect = QRectF(m_startPoint, m_endPoint).normalized();
 
     qreal dpr = m_background.devicePixelRatio();
-    if (dpr <= 0.0) dpr = 1.0;
+    if (dpr <= 0.0)
+        dpr = 1.0;
 
     int physX = qRound(selectionRect.x() * dpr);
     int physY = qRound(selectionRect.y() * dpr);

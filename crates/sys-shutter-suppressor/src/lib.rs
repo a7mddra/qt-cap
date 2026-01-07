@@ -1,3 +1,6 @@
+// Copyright 2026 a7mddra
+// SPDX-License-Identifier: Apache-2.0
+
 //! Shutter sound suppressor for screen capture
 //! 
 //! Mutes system audio during capture to suppress shutter sounds on:
@@ -10,14 +13,12 @@ use std::env;
 use std::process::Command;
 use std::sync::OnceLock;
 
-/// Cached check for wpctl availability on Linux
 static HAS_WPCTL: OnceLock<bool> = OnceLock::new();
 static HAS_PACTL: OnceLock<bool> = OnceLock::new();
 
 pub struct AudioGuard;
 
 impl AudioGuard {
-    /// Mute system audio (call before capture)
     #[inline]
     pub fn mute() {
         #[cfg(target_os = "macos")]
@@ -27,10 +28,8 @@ impl AudioGuard {
         if Self::is_wayland() {
             Self::mute_linux();
         }
-        // Windows & X11: no-op
     }
 
-    /// Unmute system audio (call after capture)
     #[inline]
     pub fn unmute() {
         #[cfg(target_os = "macos")]
@@ -40,16 +39,10 @@ impl AudioGuard {
         if Self::is_wayland() {
             Self::unmute_linux();
         }
-        // Windows & X11: no-op
     }
-
-    // ========== macOS ==========
     
     #[cfg(target_os = "macos")]
     fn mute_macos() {
-        // Using osascript for now - fast enough with flush
-        // TODO: Replace with native CoreAudio FFI for zero-delay:
-        // AudioObjectSetPropertyData(kAudioDevicePropertyMute)
         let _ = Command::new("osascript")
             .args(["-e", "set volume with output muted"])
             .output();
@@ -62,22 +55,17 @@ impl AudioGuard {
             .output();
     }
 
-    // ========== Linux (Wayland only) ==========
-
     #[cfg(target_os = "linux")]
     fn mute_linux() {
         if *HAS_WPCTL.get_or_init(|| Self::has_cmd("wpctl")) {
-            // PipeWire/WirePlumber (fastest, standard on modern Wayland)
             let _ = Command::new("wpctl")
                 .args(["set-mute", "@DEFAULT_AUDIO_SINK@", "1"])
                 .output();
         } else if *HAS_PACTL.get_or_init(|| Self::has_cmd("pactl")) {
-            // PulseAudio fallback
             let _ = Command::new("pactl")
                 .args(["set-sink-mute", "@DEFAULT_SINK@", "1"])
                 .output();
         } else {
-            // ALSA fallback (rare)
             let _ = Command::new("amixer")
                 .args(["-q", "sset", "Master", "mute"])
                 .output();
@@ -101,7 +89,6 @@ impl AudioGuard {
         }
     }
 
-    /// Check if running in Wayland session
     #[cfg(target_os = "linux")]
     fn is_wayland() -> bool {
         env::var("XDG_SESSION_TYPE")
@@ -109,7 +96,6 @@ impl AudioGuard {
             .unwrap_or(false)
     }
 
-    /// Check if a command exists in PATH
     #[cfg(target_os = "linux")]
     fn has_cmd(cmd: &str) -> bool {
         Command::new("which")
@@ -126,7 +112,6 @@ mod tests {
 
     #[test]
     fn test_mute_unmute_doesnt_panic() {
-        // Just verify no panic - actual audio state is system-dependent
         AudioGuard::mute();
         AudioGuard::unmute();
     }

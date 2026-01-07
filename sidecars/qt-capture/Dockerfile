@@ -1,6 +1,7 @@
 # -----------------------------------------------------------------------------
 # BUILDER IMAGE (Used by CI/CD)
 # -----------------------------------------------------------------------------
+
 FROM ubuntu:20.04
 
 ENV DEBIAN_FRONTEND=noninteractive
@@ -41,7 +42,6 @@ ENV PATH="/opt/qt/6.6.0/gcc_64/bin:${PATH}"
 ENV Qt6_DIR="/opt/qt/6.6.0/gcc_64"
 ENV QT_PLUGIN_PATH="/opt/qt/6.6.0/gcc_64/plugins"
 
-# Install Rust
 RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
 ENV PATH="/root/.cargo/bin:${PATH}"
 

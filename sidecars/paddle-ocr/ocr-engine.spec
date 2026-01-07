@@ -1,12 +1,9 @@
 import sys
 import os
 
-# Determine site-packages path dynamically
 if sys.platform == "win32":
     site_packages = "venv/Lib/site-packages"
 else:
-    # Use python version from sys (running pyinstaller) or assume 3.12 from venv usage
-    # Since we run this FROM the venv python, sys.version should match
     site_packages = f"venv/lib/python{sys.version_info.major}.{sys.version_info.minor}/site-packages"
 
 a = Analysis(

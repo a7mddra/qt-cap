@@ -14,12 +14,10 @@ use std::process::Command;
 
 use crate::utils::copy_dir_all;
 
-/// Build Qt native binary on Linux.
 pub fn build(native_dir: &Path) -> Result<()> {
     let build_dir = native_dir.join("build");
     let dist_dir = native_dir.join("dist");
 
-    // Detect Qt
     let qmake = find_qmake()?;
     let qt_prefix = get_qt_prefix(&qmake)?;
     let qt_plugins = get_qt_plugins(&qmake)?;
@@ -27,7 +25,6 @@ pub fn build(native_dir: &Path) -> Result<()> {
     println!("  Qt Prefix: {}", qt_prefix);
     println!("  Qt Plugins: {}", qt_plugins);
 
-    // CMake configure
     println!("  Configuring CMake...");
     fs::create_dir_all(&build_dir)?;
 
@@ -47,7 +44,6 @@ pub fn build(native_dir: &Path) -> Result<()> {
         anyhow::bail!("CMake configure failed");
     }
 
-    // CMake build
     println!("  Building...");
     let status = Command::new("cmake")
         .args([
@@ -64,7 +60,6 @@ pub fn build(native_dir: &Path) -> Result<()> {
         anyhow::bail!("CMake build failed");
     }
 
-    // Create distribution
     println!("  Creating distribution...");
     create_distribution(native_dir, &build_dir, &dist_dir, &qt_plugins, &qt_prefix)?;
 
@@ -72,7 +67,6 @@ pub fn build(native_dir: &Path) -> Result<()> {
 }
 
 fn find_qmake() -> Result<String> {
-    // Try qmake6 first, then qmake
     for cmd in ["qmake6", "qmake"] {
         if let Ok(output) = Command::new("which").arg(cmd).output() {
             if output.status.success() {
@@ -108,7 +102,6 @@ fn create_distribution(
     qt_plugins: &str,
     qt_prefix: &str,
 ) -> Result<()> {
-    // Clean and create dist structure
     if dist_dir.exists() {
         fs::remove_dir_all(dist_dir)?;
     }
@@ -123,11 +116,9 @@ fn create_distribution(
     fs::create_dir_all(&plugins_dir)?;
     fs::create_dir_all(&fonts_dir)?;
 
-    // Copy binary
     let bin_src = build_dir.join("capture-bin");
     let bin_dst = bin_dir.join("capture-bin");
 
-    // Fallback if binary name is different
     let bin_src = if !bin_src.exists() {
         build_dir.join("capture")
     } else {
@@ -146,7 +137,6 @@ fn create_distribution(
         fs::set_permissions(&bin_dst, fs::Permissions::from_mode(0o755))?;
     }
 
-    // Copy Qt plugins
     let plugin_dirs = [
         "platforms",
         "imageformats",
@@ -168,25 +158,20 @@ fn create_distribution(
         }
     }
 
-    // Build Qt lib search path for ldd (critical for Docker builds with Qt in /opt/)
     let qt_lib_path = Path::new(qt_prefix).join("lib");
     let qt_lib_str = qt_lib_path.to_string_lossy().to_string();
 
-    // Resolve and copy shared libraries (Recursive DFS)
     let mut visited = HashSet::new();
     println!("  Resolving dependencies (search path: {})...", qt_lib_str);
     resolve_libraries_recursive(&bin_dst, &libs_dir, &mut visited, &qt_lib_str)?;
 
-    // scan plugins for dependencies too
     let all_plugins = find_all_files(&plugins_dir)?;
     for plugin in all_plugins {
         resolve_libraries_recursive(&plugin, &libs_dir, &mut visited, &qt_lib_str)?;
     }
 
-    // Bundle extra XCB dependencies that may not be caught by ldd (backup scan)
     bundle_xcb_libraries(&libs_dir)?;
 
-    // Run patchelf if available
     if check_command_exists("patchelf") {
         println!("  Setting RPATH with patchelf...");
         let _ = Command::new("patchelf")
@@ -196,17 +181,17 @@ fn create_distribution(
         println!("  Warning: patchelf not found. RPATH not set.");
     }
 
-    // Copy fonts.conf
     let sys_fonts_conf = Path::new("/etc/fonts/fonts.conf");
     if sys_fonts_conf.exists() {
         fs::copy(sys_fonts_conf, fonts_dir.join("fonts.conf"))?;
     }
 
-    // Create runner script
     create_runner_script(dist_dir)?;
 
-    // Create qt.conf
-    fs::write(dist_dir.join("qt.conf"), "[Paths]\nPrefix = .\nPlugins = plugins\n")?;
+    fs::write(
+        dist_dir.join("qt.conf"),
+        "[Paths]\nPrefix = .\nPlugins = plugins\n",
+    )?;
 
     Ok(())
 }
@@ -245,8 +230,6 @@ fn resolve_libraries_recursive(
 
     let stdout = String::from_utf8_lossy(&output.stdout);
 
-    // Blocklist of system libraries to skip (matches original bash script)
-    // NOTE: libstdc++ is NOT skipped to ensure compatibility across distros
     let skip_libs = [
         "linux-vdso",
         "libgcc_s",
@@ -259,7 +242,6 @@ fn resolve_libraries_recursive(
     ];
 
     for line in stdout.lines() {
-        // Parse: libfoo.so => /path/to/libfoo.so (0x...)
         if let Some(arrow_pos) = line.find("=>") {
             let after_arrow = &line[arrow_pos + 2..].trim();
             if let Some(path_end) = after_arrow.find(" (") {
@@ -272,7 +254,6 @@ fn resolve_libraries_recursive(
 
                 let lib_name = lib_path.file_name().unwrap().to_str().unwrap();
 
-                // Check blocklist
                 let mut skip = false;
                 for s in skip_libs {
                     if lib_name.contains(s) {
@@ -284,17 +265,14 @@ fn resolve_libraries_recursive(
                     continue;
                 }
 
-                // If not already visited
                 if !visited.contains(lib_path) {
                     visited.insert(lib_path.to_path_buf());
 
                     let dst = libs_dir.join(lib_name);
                     if !dst.exists() {
-                        // println!("  Bundling: {}", lib_name);
                         fs::copy(lib_path, &dst)?;
                     }
 
-                    // Recursive call
                     resolve_libraries_recursive(lib_path, libs_dir, visited, qt_lib_path)?;
                 }
             }
@@ -304,16 +282,13 @@ fn resolve_libraries_recursive(
     Ok(())
 }
 
-/// Bundle extra XCB libraries that may not be caught by ldd but are needed at runtime.
 fn bundle_xcb_libraries(libs_dir: &Path) -> Result<()> {
-    // Common XCB library directories
     let xcb_dirs = [
         "/usr/lib/x86_64-linux-gnu",
         "/usr/lib64",
         "/lib/x86_64-linux-gnu",
     ];
 
-    // Libraries needed for Qt XCB platform plugin
     let xcb_libs = [
         "libxcb-cursor.so.0",
         "libxcb-icccm.so.4",
@@ -329,7 +304,6 @@ fn bundle_xcb_libraries(libs_dir: &Path) -> Result<()> {
         "libxkbcommon.so.0",
     ];
 
-    // Find the XCB directory that exists
     let xcb_dir = xcb_dirs.iter().find(|dir| Path::new(dir).exists());
 
     if let Some(dir) = xcb_dir {
@@ -339,7 +313,6 @@ fn bundle_xcb_libraries(libs_dir: &Path) -> Result<()> {
             let dst = libs_dir.join(lib);
 
             if src.exists() && !dst.exists() {
-                // Use copy with follow symlinks
                 if let Ok(real_path) = fs::canonicalize(&src) {
                     fs::copy(&real_path, &dst)?;
                 } else {
@@ -383,4 +356,3 @@ fn check_command_exists(cmd: &str) -> bool {
         .map(|s| s.success())
         .unwrap_or(false)
 }
-

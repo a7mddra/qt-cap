@@ -1,8 +1,6 @@
 // Copyright 2026 a7mddra
 // SPDX-License-Identifier: Apache-2.0
 
-//! Platform-specific Qt deployment modules.
-
 #[cfg(target_os = "linux")]
 pub mod linux;
 

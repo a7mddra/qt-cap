@@ -12,73 +12,77 @@ use std::process::Command;
 
 use crate::utils::copy_dir_all;
 
-/// Build Qt native binary on macOS.
 pub fn build(native_dir: &Path) -> Result<()> {
     let build_dir = native_dir.join("build");
     let dist_dir = native_dir.join("dist");
-    
-    // Detect Qt
+
     let qt_prefix = find_qt_prefix()?;
     println!("  Qt Prefix: {}", qt_prefix);
-    
-    // CMake configure
+
     println!("  Configuring CMake...");
     fs::create_dir_all(&build_dir)?;
-    
+
     let status = Command::new("cmake")
         .args([
-            "-S", native_dir.to_str().unwrap(),
-            "-B", build_dir.to_str().unwrap(),
+            "-S",
+            native_dir.to_str().unwrap(),
+            "-B",
+            build_dir.to_str().unwrap(),
             "-DCMAKE_BUILD_TYPE=Release",
             &format!("-DCMAKE_PREFIX_PATH={}", qt_prefix),
         ])
         .status()
         .context("Failed to run cmake configure")?;
-    
+
     if !status.success() {
         anyhow::bail!("CMake configure failed");
     }
-    
-    // CMake build
+
     println!("  Building...");
     let status = Command::new("cmake")
-        .args(["--build", build_dir.to_str().unwrap(), "--config", "Release", "--parallel"])
+        .args([
+            "--build",
+            build_dir.to_str().unwrap(),
+            "--config",
+            "Release",
+            "--parallel",
+        ])
         .status()
         .context("Failed to run cmake build")?;
-    
+
     if !status.success() {
         anyhow::bail!("CMake build failed");
     }
-    
-    // Create distribution with macdeployqt
+
     println!("  Running macdeployqt...");
     create_distribution(&build_dir, &dist_dir, &qt_prefix)?;
-    
+
     Ok(())
 }
 
 fn find_qt_prefix() -> Result<String> {
-    // Check common Qt locations
     let candidates = [
         "/opt/homebrew/opt/qt@6",
-        "/usr/local/opt/qt@6", 
+        "/usr/local/opt/qt@6",
         "/opt/qt/6.6.0/macos",
         "/opt/qt/6.6.0/clang_64",
     ];
-    
+
     for candidate in candidates {
         if Path::new(candidate).exists() {
             return Ok(candidate.to_string());
         }
     }
-    
-    // Try qmake
-    if let Ok(output) = Command::new("qmake6").args(["-query", "QT_INSTALL_PREFIX"]).output() {
+
+    if let Ok(output) = Command::new("qmake6")
+        .args(["-query", "QT_INSTALL_PREFIX"])
+        .output()
+    {
         if output.status.success() {
             return Ok(String::from_utf8_lossy(&output.stdout).trim().to_string());
         }
     }
-    
+
     anyhow::bail!("Qt6 not found. Install with: brew install qt@6")
 }
 
@@ -87,34 +91,34 @@ fn create_distribution(build_dir: &Path, dist_dir: &Path, qt_prefix: &str) -> Re
         fs::remove_dir_all(dist_dir)?;
     }
     fs::create_dir_all(dist_dir)?;
-    
-    // Find the built .app bundle
+
     let app_name = "capture.app";
     let app_src = build_dir.join(app_name);
     let app_dst = dist_dir.join(app_name);
-    
+
     if !app_src.exists() {
         anyhow::bail!("Built app not found: {}", app_src.display());
     }
-    
-    // Copy app bundle
+
     copy_dir_all(&app_src, &app_dst)?;
-    
-    // Run macdeployqt
+
     let macdeployqt = Path::new(qt_prefix).join("bin").join("macdeployqt");
-    
+
     if macdeployqt.exists() {
         let status = Command::new(&macdeployqt)
             .arg(&app_dst)
             .status()
             .context("Failed to run macdeployqt")?;
-        
+
         if !status.success() {
             println!("  Warning: macdeployqt failed, continuing anyway");
         }
     } else {
-        println!("  Warning: macdeployqt not found at {}", macdeployqt.display());
+        println!(
+            "  Warning: macdeployqt not found at {}",
+            macdeployqt.display()
+        );
     }
-    
+
     Ok(())
 }

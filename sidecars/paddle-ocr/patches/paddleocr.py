@@ -18,6 +18,7 @@ Patches applied:
     5. __init__.py - wraps PPStructure export in try/except
     6. rec_postprocess.py - fixes regex syntax warnings
 """
+
 import os
 import sys
 
@@ -25,18 +26,14 @@ import pathlib
 SCRIPT_DIR = pathlib.Path(__file__).parent.parent.absolute()
 PY_VERSION = f"python{sys.version_info.major}.{sys.version_info.minor}"
 
-# Detect venv layout
 if sys.platform == "win32":
-    # Windows: venv/Lib/site-packages
     BASE = SCRIPT_DIR / 'venv' / 'Lib' / 'site-packages' / 'paddleocr'
 else:
-    # Unix: venv/lib/pythonX.Y/site-packages
     BASE = SCRIPT_DIR / 'venv' / 'lib' / PY_VERSION / 'site-packages' / 'paddleocr'
 
 def check_base():
     global BASE
     if not os.path.exists(BASE):
-        # Fallback check for case sensitivity or different layout
         if sys.platform == "win32" and os.path.exists(SCRIPT_DIR / 'venv' / 'lib' / 'site-packages' / 'paddleocr'):
              BASE = SCRIPT_DIR / 'venv' / 'lib' / 'site-packages' / 'paddleocr'
         
