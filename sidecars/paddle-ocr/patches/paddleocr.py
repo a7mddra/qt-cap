@@ -51,7 +51,7 @@ def patch_imaug_init():
     filepath = BASE / 'ppocr' / 'data' / 'imaug' / '__init__.py'
     print(f"1. Patching {filepath}...")
     
-    with open(filepath, 'r') as f:
+    with open(filepath, 'r', encoding='utf-8') as f:
         lines = f.readlines()
     
     changed = False
@@ -66,7 +66,7 @@ def patch_imaug_init():
             changed = True
     
     if changed:
-        with open(filepath, 'w') as f:
+        with open(filepath, 'w', encoding='utf-8') as f:
             f.writelines(lines)
     else:
         print("   - Already patched")
@@ -76,7 +76,7 @@ def patch_paddleocr_py():
     filepath = BASE / 'paddleocr.py'
     print(f"\n2. Patching {filepath}...")
     
-    with open(filepath, 'r') as f:
+    with open(filepath, 'r', encoding='utf-8') as f:
         content = f.read()
     
     changed = False
@@ -155,7 +155,7 @@ if _HAS_PPSTRUCTURE:
         print("   - parse_args already patched")
     
     if changed:
-        with open(filepath, 'w') as f:
+        with open(filepath, 'w', encoding='utf-8') as f:
             f.write(content)
         print("   [OK] File updated")
 
@@ -164,7 +164,7 @@ def patch_init_py():
     filepath = BASE / '__init__.py'
     print(f"\n3. Patching {filepath}...")
     
-    with open(filepath, 'r') as f:
+    with open(filepath, 'r', encoding='utf-8') as f:
         content = f.read()
     
     old_import = '''from .paddleocr import (
@@ -200,7 +200,7 @@ except ImportError:
 
     if old_import in content:
         content = content.replace(old_import, new_import)
-        with open(filepath, 'w') as f:
+        with open(filepath, 'w', encoding='utf-8') as f:
             f.write(content)
         print("   [OK] Patched __init__.py to handle missing PPStructure")
     elif '# Patched: handle missing PPStructure' in content:
@@ -213,12 +213,12 @@ def patch_rec_postprocess():
     filepath = BASE / 'ppocr' / 'postprocess' / 'rec_postprocess.py'
     print(f"\n4. Patching {filepath}...")
     
-    with open(filepath, 'r') as f:
+    with open(filepath, 'r', encoding='utf-8') as f:
         content = f.read()
     
     if 'noletter = "[\\W_^\\d]"' in content:
         content = content.replace('noletter = "[\\W_^\\d]"', 'noletter = r"[\\W_^\\d]"')
-        with open(filepath, 'w') as f:
+        with open(filepath, 'w', encoding='utf-8') as f:
             f.write(content)
         print("   [OK] Fixed regex warnings (made strings raw)")
     elif 'noletter = r"[\\W_^\\d]"' in content:
