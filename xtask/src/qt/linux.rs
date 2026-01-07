@@ -24,6 +24,9 @@ pub fn build(native_dir: &Path) -> Result<()> {
 
     println!("  Qt Prefix: {}", qt_prefix);
     println!("  Qt Plugins: {}", qt_plugins);
+    
+    let qt_qml = get_qt_qml(&qmake)?;
+    println!("  Qt QML: {}", qt_qml);
 
     println!("  Configuring CMake...");
     fs::create_dir_all(&build_dir)?;
@@ -61,7 +64,7 @@ pub fn build(native_dir: &Path) -> Result<()> {
     }
 
     println!("  Creating distribution...");
-    create_distribution(native_dir, &build_dir, &dist_dir, &qt_plugins, &qt_prefix)?;
+    create_distribution(native_dir, &build_dir, &dist_dir, &qt_plugins, &qt_qml, &qt_prefix)?;
 
     Ok(())
 }
@@ -95,11 +98,21 @@ fn get_qt_plugins(qmake: &str) -> Result<String> {
     Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
 }
 
+fn get_qt_qml(qmake: &str) -> Result<String> {
+    let output = Command::new(qmake)
+        .args(["-query", "QT_INSTALL_QML"])
+        .output()
+        .context("Failed to query Qt QML path")?;
+
+    Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
+}
+
 fn create_distribution(
     _native_dir: &Path,
     build_dir: &Path,
     dist_dir: &Path,
     qt_plugins: &str,
+    qt_qml: &str,
     qt_prefix: &str,
 ) -> Result<()> {
     if dist_dir.exists() {
@@ -109,11 +122,13 @@ fn create_distribution(
     let bin_dir = dist_dir.join("bin");
     let libs_dir = dist_dir.join("libs");
     let plugins_dir = dist_dir.join("plugins");
+    let qml_dir = dist_dir.join("qml");
     let fonts_dir = dist_dir.join("fonts");
 
     fs::create_dir_all(&bin_dir)?;
     fs::create_dir_all(&libs_dir)?;
     fs::create_dir_all(&plugins_dir)?;
+    fs::create_dir_all(&qml_dir)?;
     fs::create_dir_all(&fonts_dir)?;
 
     let bin_src = build_dir.join("capture-bin");
@@ -158,6 +173,31 @@ fn create_distribution(
         }
     }
 
+    let qml_modules = ["QtQuick", "Qt5Compat", "QtQml"];
+    let qt_qml_path = Path::new(qt_qml);
+
+    for module in qml_modules {
+        let src = qt_qml_path.join(module);
+        let dst = qml_dir.join(module);
+        if src.exists() {
+            copy_dir_all(&src, &dst)?;
+        } else {
+            println!("  Warning: QML module '{}' not found at {}", module, src.display());
+        }
+    }
+    
+    // Copy root QML files (builtins.qmltypes, etc.)
+    if let Ok(entries) = fs::read_dir(qt_qml_path) {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.is_file() {
+                if let Some(name) = path.file_name() {
+                    fs::copy(&path, qml_dir.join(name))?;
+                }
+            }
+        }
+    }
+
     let qt_lib_path = Path::new(qt_prefix).join("lib");
     let qt_lib_str = qt_lib_path.to_string_lossy().to_string();
 
@@ -167,6 +207,11 @@ fn create_distribution(
 
     let all_plugins = find_all_files(&plugins_dir)?;
     for plugin in all_plugins {
+        resolve_libraries_recursive(&plugin, &libs_dir, &mut visited, &qt_lib_str)?;
+    }
+    
+    let all_qml_plugins = find_all_files(&qml_dir)?;
+    for plugin in all_qml_plugins {
         resolve_libraries_recursive(&plugin, &libs_dir, &mut visited, &qt_lib_str)?;
     }
 
@@ -190,7 +235,7 @@ fn create_distribution(
 
     fs::write(
         dist_dir.join("qt.conf"),
-        "[Paths]\nPrefix = .\nPlugins = plugins\n",
+        "[Paths]\nPrefix = .\nPlugins = plugins\nQml2Imports = qml\n",
     )?;
 
     Ok(())

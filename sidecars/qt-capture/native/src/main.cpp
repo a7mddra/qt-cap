@@ -4,32 +4,80 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-#include <QApplication>
+#include <QGuiApplication>
+#include <QQmlApplicationEngine>
+#include <QQmlContext>
+#include <QQmlComponent>
+#include <QQuickWindow>
 #include <QCommandLineParser>
 #include <QDebug>
 #include <QScreen>
 #include <vector>
+
 #include "config.h"
-#include "surface/OverlayWindow.h"
 #include "surface/CaptureMode.h"
 #include "shutter/ScreenGrabber.h"
+#include "qml/CaptureController.h"
 
 #ifdef Q_OS_WIN
 #include <windows.h>
+#include <dwmapi.h>
+#endif
+
+#ifdef Q_OS_MAC
+#include <objc/runtime.h>
+#include <objc/message.h>
 #endif
 
 extern "C" ScreenGrabber *createWindowsEngine(QObject *parent);
 extern "C" ScreenGrabber *createUnixEngine(QObject *parent);
 
+/**
+ * Apply platform-specific window hacks for instant appearance.
+ * These bypass OS window animations (macOS zoom, Windows fade).
+ */
+static void applyPlatformWindowHacks(QQuickWindow *window)
+{
+#ifdef Q_OS_WIN
+    // Disable Windows DWM transition animations
+    HWND hwnd = reinterpret_cast<HWND>(window->winId());
+    BOOL attrib = TRUE;
+    DwmSetWindowAttribute(hwnd, DWMWA_TRANSITIONS_FORCEDISABLED, &attrib, sizeof(attrib));
+#endif
+
+#ifdef Q_OS_MAC
+    // Disable macOS window animations via Objective-C runtime
+    // This matches the original OverlayWindow.mm behavior
+    WId nativeId = window->winId();
+    id nsView = reinterpret_cast<id>(nativeId);
+    if (nsView)
+    {
+        // Get NSWindow from NSView
+        id nsWindow = ((id(*)(id, SEL))objc_msgSend)(nsView, sel_registerName("window"));
+        if (nsWindow)
+        {
+            // [nsWindow setAnimationBehavior:NSWindowAnimationBehaviorNone]
+            ((void (*)(id, SEL, long))objc_msgSend)(nsWindow, sel_registerName("setAnimationBehavior:"), 2);
+            // [nsWindow setHasShadow:NO]
+            ((void (*)(id, SEL, BOOL))objc_msgSend)(nsWindow, sel_registerName("setHasShadow:"), NO);
+            // [nsWindow setLevel:NSFloatingWindowLevel]
+            ((void (*)(id, SEL, long))objc_msgSend)(nsWindow, sel_registerName("setLevel:"), 5);
+        }
+    }
+#endif
+}
+
 int main(int argc, char *argv[])
 {
+    // High DPI setup (same as original)
     QCoreApplication::setAttribute(Qt::AA_EnableHighDpiScaling);
     QCoreApplication::setAttribute(Qt::AA_UseHighDpiPixmaps);
 #if QT_VERSION >= QT_VERSION_CHECK(5, 14, 0)
-    QApplication::setHighDpiScaleFactorRoundingPolicy(Qt::HighDpiScaleFactorRoundingPolicy::PassThrough);
+    QGuiApplication::setHighDpiScaleFactorRoundingPolicy(Qt::HighDpiScaleFactorRoundingPolicy::PassThrough);
 #endif
 
 #ifdef Q_OS_WIN
+    // Windows DPI awareness setup (unchanged from original)
     HMODULE user32 = LoadLibraryW(L"user32.dll");
     if (user32)
     {
@@ -44,7 +92,7 @@ int main(int argc, char *argv[])
             HMODULE shcore = LoadLibraryW(L"Shcore.dll");
             if (shcore)
             {
-                using SetProcessDpiAwarenessFn = HRESULT(WINAPI *)(int /*PROCESS_DPI_AWARENESS*/);
+                using SetProcessDpiAwarenessFn = HRESULT(WINAPI *)(int);
                 auto fn2 = reinterpret_cast<SetProcessDpiAwarenessFn>(GetProcAddress(shcore, "SetProcessDpiAwareness"));
                 if (fn2)
                 {
@@ -69,13 +117,14 @@ int main(int argc, char *argv[])
     qputenv("QT_QPA_PLATFORM", "xcb");
 #endif
 
-    QApplication app(argc, argv);
+    QGuiApplication app(argc, argv);
 
     app.setApplicationName(APP_NAME);
     app.setOrganizationName(ORG_NAME);
     app.setApplicationVersion(APP_VERSION);
     app.setQuitOnLastWindowClosed(true);
 
+    // CLI parsing (unchanged from original)
     QCommandLineParser parser;
     parser.setApplicationDescription("Screen capture tool with selection modes");
     parser.addHelpOption();
@@ -93,10 +142,10 @@ int main(int argc, char *argv[])
 
     parser.process(app);
 
-    CaptureMode captureMode = CaptureMode::Freeshape;
+    QString captureMode = "freeshape";
     if (parser.isSet(rectangleOption))
     {
-        captureMode = CaptureMode::Rectangle;
+        captureMode = "rectangle";
         qDebug() << "Capture mode: Rectangle";
     }
     else
@@ -104,6 +153,7 @@ int main(int argc, char *argv[])
         qDebug() << "Capture mode: Freeshape";
     }
 
+    // Screen capture (unchanged - uses existing ScreenGrabber backend)
     ScreenGrabber *engine = nullptr;
 #ifdef Q_OS_WIN
     engine = createWindowsEngine(&app);
@@ -125,10 +175,17 @@ int main(int argc, char *argv[])
         return 1;
     }
 
-    QList<OverlayWindow *> windows;
-
+    // Get Qt screens for positioning
     QList<QScreen *> qtScreens = app.screens();
 
+    // QML engine setup
+    QQmlApplicationEngine qmlEngine;
+
+    // Store controllers and windows to prevent garbage collection
+    std::vector<CaptureController *> controllers;
+    std::vector<QQuickWindow *> windows;
+
+    // Create one QML window per captured display
     for (const auto &frame : frames)
     {
         qDebug() << "Display" << frame.index
@@ -136,8 +193,8 @@ int main(int argc, char *argv[])
                  << "|" << frame.geometry
                  << "| DPR:" << frame.devicePixelRatio;
 
+        // Find the matching Qt screen
         QScreen *targetScreen = nullptr;
-
         for (QScreen *s : qtScreens)
         {
             if (s->name() == frame.name)
@@ -146,7 +203,6 @@ int main(int argc, char *argv[])
                 break;
             }
         }
-
         if (!targetScreen)
         {
             for (QScreen *s : qtScreens)
@@ -159,9 +215,53 @@ int main(int argc, char *argv[])
             }
         }
 
-        OverlayWindow *win = new OverlayWindow(frame.index, frame.image, frame.geometry, targetScreen, captureMode);
-        windows.append(win);
-        win->show();
+        // Create controller for this display
+        auto *controller = new CaptureController(&app);
+        controller->setDisplayIndex(frame.index);
+        controller->setCaptureMode(captureMode);
+        controller->setBackgroundImage(frame.image, frame.devicePixelRatio);
+        controllers.push_back(controller);
+
+        // Load QML component
+        QQmlComponent component(&qmlEngine, QUrl("qrc:/CaptureQml/qml/CaptureWindow.qml"));
+        
+        if (component.isError())
+        {
+            qCritical() << "QML load error:" << component.errors();
+            return 1;
+        }
+
+        // Create window with controller property
+        QVariantMap properties;
+        properties["controller"] = QVariant::fromValue(controller);
+
+        QObject *obj = component.createWithInitialProperties(properties);
+        QQuickWindow *window = qobject_cast<QQuickWindow *>(obj);
+
+        if (!window)
+        {
+            qCritical() << "Failed to create QML window for display" << frame.index;
+            return 1;
+        }
+
+        windows.push_back(window);
+
+        // Position window on correct screen
+        if (targetScreen)
+        {
+            window->setScreen(targetScreen);
+            window->setGeometry(targetScreen->geometry());
+        }
+        else
+        {
+            window->setGeometry(frame.geometry);
+        }
+
+        // Apply platform-specific hacks for instant appearance
+        applyPlatformWindowHacks(window);
+
+        // Show fullscreen
+        window->showFullScreen();
     }
 
     return app.exec();
