@@ -14,14 +14,16 @@
 #include <QRect>
 #include <QWidget>
 #include <QScreen>
+#include "CaptureMode.h"
 
 class SquiggleCanvas;
+class RectangleCanvas;
 
 class OverlayWindow : public QMainWindow
 {
     Q_OBJECT
 public:
-    OverlayWindow(int displayNum, const QImage &bgImage, const QRect &geo, QScreen *screen, QWidget *parent = nullptr);
+    OverlayWindow(int displayNum, const QImage &bgImage, const QRect &geo, QScreen *screen, CaptureMode mode, QWidget *parent = nullptr);
     ~OverlayWindow();
 
 protected:
@@ -33,7 +35,8 @@ protected:
 
 private:
     int m_displayNum;
-    SquiggleCanvas *m_canvas;
+    CaptureMode m_mode;
+    QWidget *m_canvas;
 
 #ifdef Q_OS_MAC
     bool m_displayCallbackRegistered;

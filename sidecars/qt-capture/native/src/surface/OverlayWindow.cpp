@@ -6,6 +6,7 @@
 
 #include "OverlayWindow.h"
 #include "SquiggleCanvas.h"
+#include "RectangleCanvas.h"
 #include <QApplication>
 #include <QCloseEvent>
 #include <QDebug>
@@ -16,11 +17,21 @@
 #include <dwmapi.h>
 #endif
 
-OverlayWindow::OverlayWindow(int displayNum, const QImage &bgImage, const QRect &geo, QScreen *screen, QWidget *parent)
+OverlayWindow::OverlayWindow(int displayNum, const QImage &bgImage, const QRect &geo, QScreen *screen, CaptureMode mode, QWidget *parent)
     : QMainWindow(parent),
       m_displayNum(displayNum),
-      m_canvas(new SquiggleCanvas(bgImage, this))
+      m_mode(mode),
+      m_canvas(nullptr)
 {
+    if (m_mode == CaptureMode::Rectangle)
+    {
+        m_canvas = new RectangleCanvas(bgImage, this);
+    }
+    else
+    {
+        m_canvas = new SquiggleCanvas(bgImage, this);
+    }
+
     setCentralWidget(m_canvas);
     m_canvas->setFocus();
 

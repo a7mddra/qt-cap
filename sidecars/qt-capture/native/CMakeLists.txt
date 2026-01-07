@@ -26,8 +26,11 @@ include_directories("${CMAKE_CURRENT_BINARY_DIR}/generated")
 set(SOURCES 
     src/main.cpp 
     src/shutter/ScreenGrabber.h
+    src/surface/CaptureMode.h
     src/surface/SquiggleCanvas.cpp 
     src/surface/SquiggleCanvas.h 
+    src/surface/RectangleCanvas.cpp
+    src/surface/RectangleCanvas.h
     src/surface/OverlayWindow.h
 )
 

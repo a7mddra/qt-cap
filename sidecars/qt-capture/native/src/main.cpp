@@ -5,11 +5,13 @@
  */
 
 #include <QApplication>
+#include <QCommandLineParser>
 #include <QDebug>
 #include <QScreen>
 #include <vector>
 #include "config.h"
 #include "surface/OverlayWindow.h"
+#include "surface/CaptureMode.h"
 #include "shutter/ScreenGrabber.h"
 
 #ifdef Q_OS_WIN
@@ -64,6 +66,36 @@ int main(int argc, char *argv[])
     app.setOrganizationName(ORG_NAME);
     app.setApplicationVersion(APP_VERSION);
     app.setQuitOnLastWindowClosed(true);
+
+    // Parse command line arguments
+    QCommandLineParser parser;
+    parser.setApplicationDescription("Screen capture tool with selection modes");
+    parser.addHelpOption();
+    parser.addVersionOption();
+
+    QCommandLineOption freeshapeOption(
+        QStringList() << "f" << "freeshape",
+        "Use freeshape (squiggle) selection mode (default)");
+    parser.addOption(freeshapeOption);
+
+    QCommandLineOption rectangleOption(
+        QStringList() << "r" << "rectangle",
+        "Use rectangle selection mode");
+    parser.addOption(rectangleOption);
+
+    parser.process(app);
+
+    // Determine capture mode (rectangle takes precedence if both specified)
+    CaptureMode captureMode = CaptureMode::Freeshape;
+    if (parser.isSet(rectangleOption))
+    {
+        captureMode = CaptureMode::Rectangle;
+        qDebug() << "Capture mode: Rectangle";
+    }
+    else
+    {
+        qDebug() << "Capture mode: Freeshape";
+    }
     
     ScreenGrabber *engine = nullptr;
 #ifdef Q_OS_WIN
@@ -120,7 +152,7 @@ int main(int argc, char *argv[])
             }
         }
 
-        OverlayWindow *win = new OverlayWindow(frame.index, frame.image, frame.geometry, targetScreen);
+        OverlayWindow *win = new OverlayWindow(frame.index, frame.image, frame.geometry, targetScreen, captureMode);
         windows.append(win);
         win->show();
     }
