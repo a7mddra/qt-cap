@@ -39,14 +39,25 @@ OverlayWindow::OverlayWindow(int displayNum, const QImage &bgImage, const QRect 
     setAttribute(Qt::WA_ShowWithoutActivating);
     setAttribute(Qt::WA_TranslucentBackground, false);
 
+    // Associate with the target screen first
     if (screen)
     {
         setScreen(screen);
     }
 
-    setGeometry(geo);
-
+    // Go fullscreen - let Qt handle the geometry
+    // Don't call setGeometry before showFullScreen as it conflicts with HiDPI
     showFullScreen();
+
+    // After fullscreen, ensure we use the screen's geometry
+    if (screen)
+    {
+        setGeometry(screen->geometry());
+    }
+    else
+    {
+        setGeometry(geo);
+    }
 
     setContentsMargins(0, 0, 0, 0);
     m_canvas->setContentsMargins(0, 0, 0, 0);

@@ -26,10 +26,9 @@ RectangleCanvas::RectangleCanvas(const QImage &background, QWidget *parent)
     setCursor(Qt::CrossCursor);
     setContentsMargins(0, 0, 0, 0);
 
-    qreal dpr = m_background.devicePixelRatio();
-    if (dpr <= 0.0) dpr = 1.0;
-
-    setFixedSize(qRound(m_background.width() / dpr), qRound(m_background.height() / dpr));
+    // Don't set fixed size - let parent (OverlayWindow) control our geometry
+    // The paintEvent will scale the background image to fit our actual size
+    // This ensures proper display at any DPI scale factor
 
     m_animation = new QPropertyAnimation(this, "gradientOpacity");
     m_animation->setDuration(200);
@@ -84,6 +83,11 @@ void RectangleCanvas::mouseReleaseEvent(QMouseEvent *event)
         m_endPoint = event->pos();
         m_isDrawing = false;
         m_hasSelection = true;
+        
+        // IPC: Tell Rust to mute audio before capture
+        std::cout << "REQ_MUTE" << std::endl;
+        std::cout.flush();
+        
         cropAndFinish();
     }
 }
@@ -92,6 +96,8 @@ void RectangleCanvas::keyPressEvent(QKeyEvent *event)
 {
     if (event->key() == Qt::Key_Escape || event->key() == Qt::Key_Q)
     {
+        std::cout << "CAPTURE_FAIL" << std::endl;
+        std::cout.flush();
         QApplication::exit(1);
     }
 }
@@ -220,6 +226,8 @@ void RectangleCanvas::cropAndFinish()
 
     if (physW <= 0 || physH <= 0)
     {
+        std::cout << "CAPTURE_FAIL" << std::endl;
+        std::cout.flush();
         QApplication::exit(1);
         return;
     }
@@ -230,11 +238,15 @@ void RectangleCanvas::cropAndFinish()
     QString finalPath = QDir::temp().filePath("spatial_capture.png");
     if (cropped.save(finalPath, "PNG", -1))
     {
+        std::cout << "CAPTURE_SUCCESS" << std::endl;
         std::cout << finalPath.toStdString() << std::endl;
+        std::cout.flush();
         QApplication::exit(0);
     }
     else
     {
+        std::cout << "CAPTURE_FAIL" << std::endl;
+        std::cout.flush();
         QApplication::exit(1);
     }
 }
