@@ -1,0 +1,69 @@
+name: "Testing: CI"
+
+on:
+  push:
+    # branches:
+    #   - main
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  # =========================================================
+  # JOB 1: BUILD CAPTURE (C++/QT)
+  # =========================================================
+  build-capture:
+    name: Capture ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            name: Linux-x64
+          - os: windows-latest
+            name: Windows-x64
+          - os: macos-15-intel
+            name: macOS-Intel
+          - os: macos-latest
+            name: macOS-ARM
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build
+        uses: ./.github/actions/build-capture
+
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: capture-artifact-${{ matrix.name }}
+          path: dist-out/*
+
+  # =========================================================
+  # JOB 2: PUBLISH BINARIES (THE RELEASE JOB)
+  # =========================================================
+  publish-binaries:
+    needs: [build-capture]
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v')
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download All Artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: all-artifacts
+
+      - name: Create Release & Upload Zips
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: Release ${{ github.ref_name }}
+          draft: false
+          prerelease: false
+          fail_on_unmatched_files: false
+          files: |
+            all-artifacts/**/*.zip
