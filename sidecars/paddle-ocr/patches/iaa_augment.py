@@ -12,7 +12,12 @@ import sys
 
 SCRIPT_DIR = pathlib.Path(__file__).parent.parent.absolute()
 PY_VERSION = f"python{sys.version_info.major}.{sys.version_info.minor}"
-path = SCRIPT_DIR / 'venv' / 'lib' / PY_VERSION / 'site-packages' / 'paddleocr' / 'ppocr' / 'data' / 'imaug' / 'iaa_augment.py'
+
+# Detect venv layout: Windows uses Lib/, Unix uses lib/pythonX.Y/
+if sys.platform == "win32":
+    path = SCRIPT_DIR / 'venv' / 'Lib' / 'site-packages' / 'paddleocr' / 'ppocr' / 'data' / 'imaug' / 'iaa_augment.py'
+else:
+    path = SCRIPT_DIR / 'venv' / 'lib' / PY_VERSION / 'site-packages' / 'paddleocr' / 'ppocr' / 'data' / 'imaug' / 'iaa_augment.py'
 
 content = '''class IaaAugment:
     def __init__(self, **kwargs):

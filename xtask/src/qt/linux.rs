@@ -66,7 +66,7 @@ pub fn build(native_dir: &Path) -> Result<()> {
 
     // Create distribution
     println!("  Creating distribution...");
-    create_distribution(native_dir, &build_dir, &dist_dir, &qt_plugins)?;
+    create_distribution(native_dir, &build_dir, &dist_dir, &qt_plugins, &qt_prefix)?;
 
     Ok(())
 }
@@ -106,6 +106,7 @@ fn create_distribution(
     build_dir: &Path,
     dist_dir: &Path,
     qt_plugins: &str,
+    qt_prefix: &str,
 ) -> Result<()> {
     // Clean and create dist structure
     if dist_dir.exists() {
@@ -167,15 +168,19 @@ fn create_distribution(
         }
     }
 
+    // Build Qt lib search path for ldd (critical for Docker builds with Qt in /opt/)
+    let qt_lib_path = Path::new(qt_prefix).join("lib");
+    let qt_lib_str = qt_lib_path.to_string_lossy().to_string();
+
     // Resolve and copy shared libraries (Recursive DFS)
     let mut visited = HashSet::new();
-    println!("  Resolving dependencies...");
-    resolve_libraries_recursive(&bin_dst, &libs_dir, &mut visited)?;
+    println!("  Resolving dependencies (search path: {})...", qt_lib_str);
+    resolve_libraries_recursive(&bin_dst, &libs_dir, &mut visited, &qt_lib_str)?;
 
     // scan plugins for dependencies too
     let all_plugins = find_all_files(&plugins_dir)?;
     for plugin in all_plugins {
-        resolve_libraries_recursive(&plugin, &libs_dir, &mut visited)?;
+        resolve_libraries_recursive(&plugin, &libs_dir, &mut visited, &qt_lib_str)?;
     }
 
     // Bundle extra XCB dependencies that may not be caught by ldd (backup scan)
@@ -230,15 +235,18 @@ fn resolve_libraries_recursive(
     binary: &Path,
     libs_dir: &Path,
     visited: &mut HashSet<PathBuf>,
+    qt_lib_path: &str,
 ) -> Result<()> {
     let output = Command::new("ldd")
         .arg(binary)
+        .env("LD_LIBRARY_PATH", qt_lib_path)
         .output()
         .context("Failed to run ldd")?;
 
     let stdout = String::from_utf8_lossy(&output.stdout);
 
-    // Blocklist of system libraries to skip
+    // Blocklist of system libraries to skip (matches original bash script)
+    // NOTE: libstdc++ is NOT skipped to ensure compatibility across distros
     let skip_libs = [
         "linux-vdso",
         "libgcc_s",
@@ -248,13 +256,7 @@ fn resolve_libraries_recursive(
         "libpthread",
         "librt",
         "libdl",
-        "libstdc++", // Sometimes skipped, sometimes not. Keeping consistent with Bash which removed it from skip list?
-                     // Verify: Bash script comment says "Removed libstdc++ from skip list to ensure compatibility"
-                     // So we should NOT skip libstdc++.
     ];
-    // NOTE: The above list logic:
-    // Bash script: SKIP_LIBS="linux-vdso|libgcc_s|libc.so|libm.so|ld-linux|libpthread|librt|libdl"
-    // So libstdc++ IS copied.
 
     for line in stdout.lines() {
         // Parse: libfoo.so => /path/to/libfoo.so (0x...)
@@ -293,7 +295,7 @@ fn resolve_libraries_recursive(
                     }
 
                     // Recursive call
-                    resolve_libraries_recursive(lib_path, libs_dir, visited)?;
+                    resolve_libraries_recursive(lib_path, libs_dir, visited, qt_lib_path)?;
                 }
             }
         }
