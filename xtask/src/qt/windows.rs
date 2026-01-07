@@ -32,6 +32,8 @@ pub fn build(native_dir: &Path) -> Result<()> {
             "-B", build_dir.to_str().unwrap(),
             "-G", "Ninja",
             "-DCMAKE_BUILD_TYPE=Release",
+            "-DCMAKE_C_COMPILER=cl.exe",
+            "-DCMAKE_CXX_COMPILER=cl.exe",
             &format!("-DCMAKE_PREFIX_PATH={}", qt_path),
         ])
         .status()

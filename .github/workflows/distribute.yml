@@ -58,9 +58,15 @@ jobs:
           arch: "win64_msvc2019_64"
           cached: true
 
-      - name: Build Qt Native
+      - name: Build Qt Native (Unix)
+        if: runner.os != 'Windows'
         run: cargo xtask build-capture-qt
         shell: bash
+
+      - name: Build Qt Native (Windows)
+        if: runner.os == 'Windows'
+        run: cargo xtask build-capture-qt
+        shell: pwsh
 
       - name: Build Rust Wrapper
         run: cargo build --release -p capture-engine
