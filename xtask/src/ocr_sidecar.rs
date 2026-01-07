@@ -112,7 +112,11 @@ pub fn build() -> Result<()> {
     
     // Step 6: Copy to Tauri binaries
     println!("\n📋 Copying to Tauri binaries...");
-    let binary_name = format!("ocr-engine-{}", target_triple());
+    let binary_name = if cfg!(windows) {
+        format!("ocr-engine-{}.exe", target_triple())
+    } else {
+        format!("ocr-engine-{}", target_triple())
+    };
     let dist_dir = sidecar.join("dist");
     let src_exe = if cfg!(windows) {
         dist_dir.join("ocr-engine.exe")
