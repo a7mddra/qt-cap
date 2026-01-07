@@ -6,12 +6,10 @@
 //! Handles building the Qt-based screen capture tool and its Rust wrapper
 //! as a portable distribution for Tauri integration.
 
-use anyhow::{Context, Result};
+use anyhow::Result;
 use std::fs;
-use std::path::Path;
-use std::process::Command;
 
-use crate::utils::{project_root, run_cmd, copy_dir_all, target_triple};
+use crate::utils::{project_root, run_cmd, copy_dir_all};
 
 /// Get the Qt capture sidecar directory path.
 pub fn sidecar_dir() -> std::path::PathBuf {
@@ -76,7 +74,7 @@ fn build_qt_native() -> Result<()> {
 fn build_rust_wrapper() -> Result<()> {
     println!("\n🦀 Building Rust wrapper...");
     
-    let sidecar = sidecar_dir();
+    let _sidecar = sidecar_dir();
     
     run_cmd(
         "cargo",

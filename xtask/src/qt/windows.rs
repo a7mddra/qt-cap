@@ -67,6 +67,16 @@ fn find_qt_path() -> Result<String> {
         }
     }
     
+    // Check if qmake is in PATH (common in CI)
+    if let Ok(output) = Command::new("qmake").arg("-query").arg("QT_INSTALL_PREFIX").output() {
+        if output.status.success() {
+             let path = String::from_utf8_lossy(&output.stdout).trim().to_string();
+             if Path::new(&path).exists() {
+                 return Ok(path);
+             }
+        }
+    }
+
     // Check common installation paths
     let candidates = [
         r"C:\Qt\6.6.0\msvc2019_64",
