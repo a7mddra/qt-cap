@@ -7,4 +7,3 @@ edition = "2021"
 core-foundation = "0.10"
 
 [target.'cfg(target_os = "linux")'.dependencies]
-# No extra deps needed for Linux - uses shell commands

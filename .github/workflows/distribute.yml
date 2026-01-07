@@ -1,15 +1,20 @@
-name: "Build Capture Engine"
+name: "Distribute"
 
 on:
   push:
+    tags:
+      - "v*"
   # workflow_dispatch:
 
 permissions:
   contents: write
 
 jobs:
+  # -----------------------------------------------------------------------------
+  # Job 1: Build Capture Engine (Qt + Rust)
+  # -----------------------------------------------------------------------------
   build-capture:
-    name: Build ${{ matrix.name }}
+    name: Capture ${{ matrix.name }}
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -21,7 +26,7 @@ jobs:
           - os: windows-latest
             name: Windows-x64
             target: x86_64-pc-windows-msvc
-          - os: macos-15
+          - os: macos-13
             name: macOS-Intel
             target: x86_64-apple-darwin
           - os: macos-latest
@@ -31,100 +36,135 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install Rust
-        uses: dtolnay/rust-toolchain@stable
-
-      - name: Install Qt (Ubuntu)
-        if: runner.os == 'Linux'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y qt6-base-dev qt6-tools-dev cmake build-essential \
-            libgl1-mesa-dev libxkbcommon-x11-dev libxcb-cursor0 libxcb-keysyms1 \
-            libxcb-image0 libxcb-icccm4 libxcb-shape0 libxcb-render-util0 libxcb-xinerama0
-
-      - name: Install Qt (macOS)
-        if: runner.os == 'macOS'
-        run: |
-          brew install qt@6
-          echo "Qt6_DIR=$(brew --prefix qt@6)" >> $GITHUB_ENV
-
-      - name: Install Qt (Windows)
-        if: runner.os == 'Windows'
-        uses: jurplel/install-qt-action@v4
+      - name: Build Capture Engine
+        uses: ./.github/actions/build-capture-engine
         with:
-          version: "6.6.0"
-          host: "windows"
-          target: "desktop"
-          arch: "win64_msvc2019_64"
-          cached: true
+          target: ${{ matrix.target }}
 
-      - name: Setup MSVC (Windows)
-        if: runner.os == 'Windows'
-        uses: ilammy/msvc-dev-cmd@v1
-
-      - name: Build Qt Native (Unix)
-        if: runner.os != 'Windows'
-        run: cargo xtask build-capture-qt
-        shell: bash
-
-      - name: Build Qt Native (Windows)
-        if: runner.os == 'Windows'
-        run: cargo xtask build-capture-qt
-        shell: pwsh
-
-      - name: Build Rust Wrapper
-        run: cargo build --release -p capture-engine
-
-      - name: Build OCR Sidecar
-        uses: ./.github/actions/build-ocr
-
-      - name: Package Artifact (Unix)
+      - name: Prepare Artifacts (Unix)
         if: runner.os != 'Windows'
         run: |
-          mkdir -p dist-out/sidecars/qt-runtime
+          mkdir -p dist-staging/qt-runtime
+          cp target/release/capture-engine dist-staging/capture-engine-${{ matrix.target }}
+          cp -r sidecars/qt-capture/native/dist/* dist-staging/qt-runtime/
 
-          # Copy Capture Engine (Binary + Runtime)
-          cp target/release/capture-engine dist-out/sidecars/capture-engine-${{ matrix.target }}
-          cp -r sidecars/qt-capture/native/dist/* dist-out/sidecars/qt-runtime/
-
-          # Copy OCR Engine
-          cp app/binaries/ocr-engine-${{ matrix.target }} dist-out/sidecars/
-
-          # Zip it all (archive name: sidecars-OS-ARCH.zip)
-          cd dist-out
-          zip -r sidecars-${{ matrix.target }}.zip sidecars
-
-      - name: Package Artifact (Windows)
+      - name: Prepare Artifacts (Windows)
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
-          New-Item -ItemType Directory -Path dist-out/sidecars/qt-runtime -Force
+          New-Item -ItemType Directory -Path dist-staging/qt-runtime -Force
+          Copy-Item target/release/capture-engine.exe dist-staging/capture-engine-${{ matrix.target }}.exe
+          Copy-Item -Recurse sidecars/qt-capture/native/dist/* dist-staging/qt-runtime/
 
-          # Copy Capture Engine (Binary + Runtime)
-          Copy-Item target/release/capture-engine.exe dist-out/sidecars/capture-engine-${{ matrix.target }}.exe
-          Copy-Item -Recurse sidecars/qt-capture/native/dist/* dist-out/sidecars/qt-runtime/
-
-          # Copy OCR Engine
-          Copy-Item app/binaries/ocr-engine-${{ matrix.target }}.exe dist-out/sidecars/
-
-          # Zip it all
-          Compress-Archive -Path dist-out/sidecars -DestinationPath dist-out/sidecars-${{ matrix.target }}.zip
-
-      - name: Upload Artifact
+      - name: Upload Capture Artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: sidecars-${{ matrix.target }}
-          path: dist-out/*.zip
+          name: capture-part-${{ matrix.target }}
+          path: dist-staging/*
 
-  publish:
-    needs: [build-capture]
+  # -----------------------------------------------------------------------------
+  # Job 2: Build OCR Engine (Python/PyInstaller)
+  # -----------------------------------------------------------------------------
+  build-ocr:
+    name: OCR ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            name: Linux-x64
+            target: x86_64-unknown-linux-gnu
+          - os: windows-latest
+            name: Windows-x64
+            target: x86_64-pc-windows-msvc
+          - os: macos-13
+            name: macOS-Intel
+            target: x86_64-apple-darwin
+          - os: macos-latest
+            name: macOS-ARM
+            target: aarch64-apple-darwin
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build OCR Engine
+        uses: ./.github/actions/build-ocr-engine
+
+      - name: Prepare Artifacts (Unix)
+        if: runner.os != 'Windows'
+        run: |
+          mkdir -p dist-staging
+          cp app/binaries/ocr-engine-${{ matrix.target }} dist-staging/
+
+      - name: Prepare Artifacts (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Path dist-staging -Force
+          Copy-Item app/binaries/ocr-engine-${{ matrix.target }}.exe dist-staging/
+
+      - name: Upload OCR Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ocr-part-${{ matrix.target }}
+          path: dist-staging/*
+
+  # -----------------------------------------------------------------------------
+  # Job 3: Package & Release
+  # -----------------------------------------------------------------------------
+  package:
+    name: Package & Release
+    needs: [build-capture, build-ocr]
     runs-on: ubuntu-latest
     if: startsWith(github.ref, 'refs/tags/v')
+
+    strategy:
+      matrix:
+        target:
+          - x86_64-unknown-linux-gnu
+          - x86_64-pc-windows-msvc
+          - x86_64-apple-darwin
+          - aarch64-apple-darwin
+
     steps:
-      - name: Download All Artifacts
+      - name: Download Capture Artifacts
         uses: actions/download-artifact@v4
         with:
-          path: all-artifacts
+          name: capture-part-${{ matrix.target }}
+          path: staging/capture
+
+      - name: Download OCR Artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: ocr-part-${{ matrix.target }}
+          path: staging/ocr
+
+      - name: Assemble & Zip
+        run: |
+          mkdir -p final/sidecars/qt-runtime
+
+          # Move Capture Engine
+          # Handle Windows .exe extension vs Unix
+          if [ -f staging/capture/capture-engine-${{ matrix.target }}.exe ]; then
+            mv staging/capture/capture-engine-${{ matrix.target }}.exe final/sidecars/
+          else
+            mv staging/capture/capture-engine-${{ matrix.target }} final/sidecars/
+          fi
+
+          # Move Qt Runtime
+          cp -r staging/capture/qt-runtime/* final/sidecars/qt-runtime/
+
+          # Move OCR Engine
+          if [ -f staging/ocr/ocr-engine-${{ matrix.target }}.exe ]; then
+            mv staging/ocr/ocr-engine-${{ matrix.target }}.exe final/sidecars/
+          else
+            mv staging/ocr/ocr-engine-${{ matrix.target }} final/sidecars/
+          fi
+
+          # Zip
+          cd final
+          zip -r ../sidecars-${{ matrix.target }}.zip sidecars
 
       - name: Create Release
         uses: softprops/action-gh-release@v1
@@ -133,4 +173,4 @@ jobs:
           name: Release ${{ github.ref_name }}
           draft: false
           prerelease: false
-          files: all-artifacts/**/*.zip
+          files: sidecars-${{ matrix.target }}.zip

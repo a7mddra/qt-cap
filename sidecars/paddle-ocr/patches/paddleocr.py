@@ -24,12 +24,27 @@ import sys
 import pathlib
 SCRIPT_DIR = pathlib.Path(__file__).parent.parent.absolute()
 PY_VERSION = f"python{sys.version_info.major}.{sys.version_info.minor}"
-BASE = SCRIPT_DIR / 'venv' / 'lib' / PY_VERSION / 'site-packages' / 'paddleocr'
+
+# Detect venv layout
+if sys.platform == "win32":
+    # Windows: venv/Lib/site-packages
+    BASE = SCRIPT_DIR / 'venv' / 'Lib' / 'site-packages' / 'paddleocr'
+else:
+    # Unix: venv/lib/pythonX.Y/site-packages
+    BASE = SCRIPT_DIR / 'venv' / 'lib' / PY_VERSION / 'site-packages' / 'paddleocr'
 
 def check_base():
     if not os.path.exists(BASE):
-        print(f"Error: {BASE} not found. Run this from project root with venv activated.")
-        sys.exit(1)
+        # Fallback check for case sensitivity or different layout
+        if sys.platform == "win32" and os.path.exists(SCRIPT_DIR / 'venv' / 'lib' / 'site-packages' / 'paddleocr'):
+             global BASE
+             BASE = SCRIPT_DIR / 'venv' / 'lib' / 'site-packages' / 'paddleocr'
+        
+        if not os.path.exists(BASE):
+            print(f"Error: {BASE} not found.")
+            print(f"  Current OS: {sys.platform}")
+            print(f"  Script Dir: {SCRIPT_DIR}")
+            sys.exit(1)
 
 def patch_imaug_init():
     """Comment out latex_ocr_aug and unimernet_aug imports."""

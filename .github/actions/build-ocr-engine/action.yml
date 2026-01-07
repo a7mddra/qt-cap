@@ -1,4 +1,4 @@
-name: "Build PaddleOCR Sidecar"
+name: "Build OCR Engine"
 description: "Builds the Python-based PaddleOCR standalone executable"
 runs:
   using: "composite"
@@ -11,5 +11,5 @@ runs:
     - name: Build OCR Engine
       shell: bash
       run: |
-        # Ensure cargo is in path (it should be from rust-toolchain action)
+        # Ensure cargo is in path
         cargo xtask build-ocr

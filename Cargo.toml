@@ -2,7 +2,7 @@
 members = [
     "xtask",
     "crates/*",
-    "sidecars/qt-capture",  # produces capture-engine binary
+    "sidecars/qt-capture",
 ]
 resolver = "2"
 

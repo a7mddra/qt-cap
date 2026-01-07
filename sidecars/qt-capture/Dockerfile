@@ -27,6 +27,9 @@ RUN apt-get update && apt-get install -y \
     libxcb-xinerama0 \
     libfontconfig1 \
     libdbus-1-3 \
+    curl \
+    pkg-config \
+    libssl-dev \
     && rm -rf /var/lib/apt/lists/*
 
 RUN pip3 install aqtinstall && \
@@ -35,6 +38,10 @@ RUN pip3 install aqtinstall && \
 ENV PATH="/opt/qt/6.6.0/gcc_64/bin:${PATH}"
 ENV Qt6_DIR="/opt/qt/6.6.0/gcc_64"
 ENV QT_PLUGIN_PATH="/opt/qt/6.6.0/gcc_64/plugins"
+
+# Install Rust
+RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+ENV PATH="/root/.cargo/bin:${PATH}"
 
 WORKDIR /build
 CMD ["/bin/bash"]

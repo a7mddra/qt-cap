@@ -358,9 +358,6 @@ export QT_PLUGIN_PATH="$DIR/plugins"
 export QT_QPA_PLATFORM_PLUGIN_PATH="$DIR/plugins/platforms"
 export QML2_IMPORT_PATH="$DIR/qml"
 
-# Force XCB if needed, or let Qt decide
-# export QT_QPA_PLATFORM=xcb 
-
 exec "$DIR/bin/capture-bin" "$@"
 "#;
 
