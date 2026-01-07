@@ -58,6 +58,10 @@ jobs:
           arch: "win64_msvc2019_64"
           cached: true
 
+      - name: Setup MSVC (Windows)
+        if: runner.os == 'Windows'
+        uses: ilammy/msvc-dev-cmd@v1
+
       - name: Build Qt Native (Unix)
         if: runner.os != 'Windows'
         run: cargo xtask build-capture-qt

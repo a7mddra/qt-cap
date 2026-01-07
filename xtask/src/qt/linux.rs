@@ -12,7 +12,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-use crate::utils::{copy_dir_all, run_cmd};
+use crate::utils::copy_dir_all;
 
 /// Build Qt native binary on Linux.
 pub fn build(native_dir: &Path) -> Result<()> {
@@ -102,7 +102,7 @@ fn get_qt_plugins(qmake: &str) -> Result<String> {
 }
 
 fn create_distribution(
-    native_dir: &Path,
+    _native_dir: &Path,
     build_dir: &Path,
     dist_dir: &Path,
     qt_plugins: &str,
