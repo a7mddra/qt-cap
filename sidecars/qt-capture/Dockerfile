@@ -30,6 +30,8 @@ RUN apt-get update && apt-get install -y \
     curl \
     pkg-config \
     libssl-dev \
+    patchelf \
+    file \
     && rm -rf /var/lib/apt/lists/*
 
 RUN pip3 install aqtinstall && \
