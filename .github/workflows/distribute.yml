@@ -1,21 +1,17 @@
-name: "Testing: CI"
+name: "Build Capture Engine"
 
 on:
   push:
-    # branches:
-    #   - main
     tags:
       - "v*"
+  workflow_dispatch:
 
 permissions:
   contents: write
 
 jobs:
-  # =========================================================
-  # JOB 1: BUILD CAPTURE (C++/QT)
-  # =========================================================
   build-capture:
-    name: Capture ${{ matrix.name }}
+    name: Build ${{ matrix.name }}
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -23,47 +19,92 @@ jobs:
         include:
           - os: ubuntu-latest
             name: Linux-x64
+            target: x86_64-unknown-linux-gnu
           - os: windows-latest
             name: Windows-x64
-          - os: macos-15-intel
+            target: x86_64-pc-windows-msvc
+          - os: macos-13
             name: macOS-Intel
+            target: x86_64-apple-darwin
           - os: macos-latest
             name: macOS-ARM
+            target: aarch64-apple-darwin
 
     steps:
       - uses: actions/checkout@v4
 
-      - name: Build
-        uses: ./.github/actions/build-capture
+      - name: Install Rust
+        uses: dtolnay/rust-action@stable
+
+      - name: Install Qt (Ubuntu)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y qt6-base-dev qt6-tools-dev cmake build-essential \
+            libgl1-mesa-dev libxkbcommon-x11-dev libxcb-cursor0 libxcb-keysyms1 \
+            libxcb-image0 libxcb-icccm4 libxcb-shape0 libxcb-render-util0 libxcb-xinerama0
+
+      - name: Install Qt (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          brew install qt@6
+          echo "Qt6_DIR=$(brew --prefix qt@6)" >> $GITHUB_ENV
+
+      - name: Install Qt (Windows)
+        if: runner.os == 'Windows'
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: "6.6.0"
+          host: "windows"
+          target: "desktop"
+          arch: "win64_msvc2019_64"
+          cached: true
+
+      - name: Build Qt Native
+        run: cargo xtask build-capture-qt
+        shell: bash
+
+      - name: Build Rust Wrapper
+        run: cargo build --release -p capture-engine
+
+      - name: Package Artifact (Unix)
+        if: runner.os != 'Windows'
+        run: |
+          mkdir -p dist-out
+          cp target/release/capture-engine dist-out/capture-engine-${{ matrix.target }}
+          cp -r sidecars/qt-capture/native/dist dist-out/qt-runtime
+          cd dist-out && zip -r capture-engine-${{ matrix.target }}.zip .
+
+      - name: Package Artifact (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Path dist-out -Force
+          Copy-Item target/release/capture-engine.exe dist-out/capture-engine-${{ matrix.target }}.exe
+          Copy-Item -Recurse sidecars/qt-capture/native/dist dist-out/qt-runtime
+          Compress-Archive -Path dist-out/* -DestinationPath dist-out/capture-engine-${{ matrix.target }}.zip
 
       - name: Upload Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: capture-artifact-${{ matrix.name }}
-          path: dist-out/*
+          name: capture-engine-${{ matrix.target }}
+          path: dist-out/*.zip
 
-  # =========================================================
-  # JOB 2: PUBLISH BINARIES (THE RELEASE JOB)
-  # =========================================================
-  publish-binaries:
+  publish:
     needs: [build-capture]
     runs-on: ubuntu-latest
     if: startsWith(github.ref, 'refs/tags/v')
     steps:
-      - uses: actions/checkout@v4
-
       - name: Download All Artifacts
         uses: actions/download-artifact@v4
         with:
           path: all-artifacts
 
-      - name: Create Release & Upload Zips
+      - name: Create Release
         uses: softprops/action-gh-release@v1
         with:
           tag_name: ${{ github.ref_name }}
           name: Release ${{ github.ref_name }}
           draft: false
           prerelease: false
-          fail_on_unmatched_files: false
-          files: |
-            all-artifacts/**/*.zip
+          files: all-artifacts/**/*.zip

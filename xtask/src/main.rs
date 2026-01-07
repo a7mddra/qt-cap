@@ -1,25 +1,28 @@
 // Copyright 2026 a7mddra
 // SPDX-License-Identifier: Apache-2.0
 
-//! Build automation for ocr-engine
+//! Build automation for ocr-engine and capture-engine
 //!
 //! Usage:
-//!   cargo xtask build-sidecar    Build PaddleOCR sidecar executable
-//!   cargo xtask build-app        Build Tauri application
-//!   cargo xtask build            Build everything
-//!   cargo xtask clean            Clean all build artifacts
-//!   cargo xtask run <cmd>        Run Tauri commands (dev, build, etc.)
+//!   cargo xtask build              Build everything (OCR + Capture)
+//!   cargo xtask build-ocr          Build PaddleOCR sidecar executable
+//!   cargo xtask build-capture      Build Capture Engine (Qt + Rust)
+//!   cargo xtask build-capture-qt   Build Qt native only (no Rust)
+//!   cargo xtask clean              Clean all build artifacts
+//!   cargo xtask run <cmd>          Run Tauri commands (dev, build, etc.)
 
-mod sidecar;
+mod ocr_sidecar;
+mod capture_sidecar;
 mod tauri;
 mod utils;
+mod qt;
 
 use anyhow::Result;
 use clap::{Parser, Subcommand};
 
 #[derive(Parser)]
 #[command(name = "xtask")]
-#[command(about = "Build automation for ocr-engine")]
+#[command(about = "Build automation for sidecars")]
 struct Cli {
     #[command(subcommand)]
     command: Commands,
@@ -27,11 +30,17 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Commands {
-    /// Build everything (sidecar + app)
+    /// Build everything (OCR sidecar + Capture Engine)
     Build,
     
     /// Build PaddleOCR sidecar executable
-    BuildSidecar,
+    BuildOcr,
+    
+    /// Build Capture Engine (Qt + Rust wrapper)
+    BuildCapture,
+    
+    /// Build Qt native only (no Rust wrapper)
+    BuildCaptureQt,
     
     /// Build Tauri application for release
     BuildApp,
@@ -55,17 +64,25 @@ fn main() -> Result<()> {
     
     match cli.command {
         Commands::Build => {
-            sidecar::build()?;
+            ocr_sidecar::build()?;
+            capture_sidecar::build()?;
             tauri::build()?;
         }
-        Commands::BuildSidecar => {
-            sidecar::build()?;
+        Commands::BuildOcr => {
+            ocr_sidecar::build()?;
+        }
+        Commands::BuildCapture => {
+            capture_sidecar::build()?;
+        }
+        Commands::BuildCaptureQt => {
+            capture_sidecar::build_qt_only()?;
         }
         Commands::BuildApp => {
             tauri::build()?;
         }
         Commands::Clean => {
-            sidecar::clean()?;
+            ocr_sidecar::clean()?;
+            capture_sidecar::clean()?;
             tauri::clean()?;
         }
         Commands::Run { cmd } => {

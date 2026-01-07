@@ -1,10 +1,10 @@
 [package]
-name = "qt-capture"
+name = "capture-engine"
 version = "0.1.0"
 edition = "2021"
 
 [[bin]]
-name = "qt-capture"
+name = "capture-engine"
 path = "src/main.rs"
 
 [dependencies]
@@ -12,3 +12,4 @@ anyhow = "1.0"
 sys-display-hotplug = { path = "../../crates/sys-display-hotplug" }
 sys-single-instance = { path = "../../crates/sys-single-instance" }
 sys-shutter-suppressor = { path = "../../crates/sys-shutter-suppressor" }
+
