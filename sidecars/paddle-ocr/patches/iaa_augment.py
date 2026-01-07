@@ -37,4 +37,4 @@ class ImgaugLikeResize:
 with open(path, 'w') as f:
     f.write(content)
 
-print(f"✓ Stubbed {path}")
+print(f"[OK] Stubbed {path}")

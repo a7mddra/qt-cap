@@ -42,9 +42,9 @@ if old_pattern in content:
     content = content.replace(old_pattern, new_pattern)
     with open(path, 'w') as f:
         f.write(content)
-    print("✓ Patch applied successfully.")
+    print("[OK] Patch applied successfully.")
 elif '# Patched: handle PyInstaller frozen executable' in content:
     print("- Already patched.")
 else:
-    print("✗ Could not find expected pattern. Manual fix may be needed.")
+    print("[ERROR] Could not find expected pattern. Manual fix may be needed.")
     sys.exit(1)

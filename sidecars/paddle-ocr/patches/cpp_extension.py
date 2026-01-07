@@ -39,4 +39,4 @@ class BuildExtension:
 with open(path, 'w') as f:
     f.write(stub)
 
-print(f"✓ Stubbed {path}")
+print(f"[OK] Stubbed {path}")
