@@ -1,0 +1,15 @@
+name: "Build PaddleOCR Sidecar"
+description: "Builds the Python-based PaddleOCR standalone executable"
+runs:
+  using: "composite"
+  steps:
+    - name: Setup Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: "3.12"
+
+    - name: Build OCR Engine
+      shell: bash
+      run: |
+        # Ensure cargo is in path (it should be from rust-toolchain action)
+        cargo xtask build-ocr

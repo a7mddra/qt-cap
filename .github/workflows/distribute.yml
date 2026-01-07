@@ -72,30 +72,45 @@ jobs:
         run: cargo xtask build-capture-qt
         shell: pwsh
 
-      - name: Build Rust Wrapper
-        run: cargo build --release -p capture-engine
+      - name: Build OCR Sidecar
+        uses: ./.github/actions/build-ocr
 
       - name: Package Artifact (Unix)
         if: runner.os != 'Windows'
         run: |
-          mkdir -p dist-out
-          cp target/release/capture-engine dist-out/capture-engine-${{ matrix.target }}
-          cp -r sidecars/qt-capture/native/dist dist-out/qt-runtime
-          cd dist-out && zip -r capture-engine-${{ matrix.target }}.zip .
+          mkdir -p dist-out/sidecars/qt-runtime
+
+          # Copy Capture Engine (Binary + Runtime)
+          cp target/release/capture-engine dist-out/sidecars/capture-engine-${{ matrix.target }}
+          cp -r sidecars/qt-capture/native/dist/* dist-out/sidecars/qt-runtime/
+
+          # Copy OCR Engine
+          cp app/binaries/ocr-engine-${{ matrix.target }} dist-out/sidecars/
+
+          # Zip it all (archive name: sidecars-OS-ARCH.zip)
+          cd dist-out
+          zip -r sidecars-${{ matrix.target }}.zip sidecars
 
       - name: Package Artifact (Windows)
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
-          New-Item -ItemType Directory -Path dist-out -Force
-          Copy-Item target/release/capture-engine.exe dist-out/capture-engine-${{ matrix.target }}.exe
-          Copy-Item -Recurse sidecars/qt-capture/native/dist dist-out/qt-runtime
-          Compress-Archive -Path dist-out/* -DestinationPath dist-out/capture-engine-${{ matrix.target }}.zip
+          New-Item -ItemType Directory -Path dist-out/sidecars/qt-runtime -Force
+
+          # Copy Capture Engine (Binary + Runtime)
+          Copy-Item target/release/capture-engine.exe dist-out/sidecars/capture-engine-${{ matrix.target }}.exe
+          Copy-Item -Recurse sidecars/qt-capture/native/dist/* dist-out/sidecars/qt-runtime/
+
+          # Copy OCR Engine
+          Copy-Item app/binaries/ocr-engine-${{ matrix.target }}.exe dist-out/sidecars/
+
+          # Zip it all
+          Compress-Archive -Path dist-out/sidecars -DestinationPath dist-out/sidecars-${{ matrix.target }}.zip
 
       - name: Upload Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: capture-engine-${{ matrix.target }}
+          name: sidecars-${{ matrix.target }}
           path: dist-out/*.zip
 
   publish:
