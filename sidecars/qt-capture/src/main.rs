@@ -101,6 +101,7 @@ fn spawn_qt_child(args: &[String]) -> Result<Child> {
     {
         let libs_path = qt_runtime_dir.join("libs");
         let plugins_path = qt_runtime_dir.join("plugins");
+        let qml_path = qt_runtime_dir.join("qml");
 
         let mut ld_path = libs_path.to_string_lossy().to_string();
         if let Ok(existing) = env::var("LD_LIBRARY_PATH") {
@@ -109,6 +110,7 @@ fn spawn_qt_child(args: &[String]) -> Result<Child> {
 
         cmd.env("LD_LIBRARY_PATH", ld_path)
             .env("QT_PLUGIN_PATH", &plugins_path)
+            .env("QML2_IMPORT_PATH", &qml_path)
             .env(
                 "QT_QPA_PLATFORM_PLUGIN_PATH",
                 plugins_path.join("platforms"),

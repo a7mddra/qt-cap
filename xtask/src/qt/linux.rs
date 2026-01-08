@@ -217,10 +217,15 @@ fn create_distribution(
 
     bundle_misc_libraries(&libs_dir, &qt_lib_path)?;
 
+    // Create SONAME symlinks (e.g., libQt6Core.so.6 -> libQt6Core.so.6.x.x)
+    create_soname_symlinks(&libs_dir)?;
+
     if check_command_exists("patchelf") {
         println!("  Setting RPATH with patchelf...");
-        patch_rpath_recursive(&bin_dir, "lib", &libs_dir)?;
-        patch_rpath_recursive(&libs_dir, "lib", &libs_dir)?;
+        patch_rpath_recursive(&bin_dir, &libs_dir)?;
+        patch_rpath_recursive(&libs_dir, &libs_dir)?;
+        patch_rpath_recursive(&plugins_dir, &libs_dir)?;
+        patch_rpath_recursive(&qml_dir, &libs_dir)?;
     } else {
         println!("  Warning: patchelf not found. RPATH not set.");
     }
@@ -232,9 +237,10 @@ fn create_distribution(
 
     create_runner_script(dist_dir)?;
 
+    // qt.conf must be next to the executable in bin/
     fs::write(
-        dist_dir.join("qt.conf"),
-        "[Paths]\nPrefix = .\nPlugins = plugins\nQml2Imports = qml\n",
+        bin_dir.join("qt.conf"),
+        "[Paths]\nPrefix = ..\nPlugins = plugins\nQml2Imports = qml\n",
     )?;
 
     Ok(())
@@ -421,7 +427,7 @@ exec "$DIR/bin/capture-bin" "$@"
     Ok(())
 }
 
-fn patch_rpath_recursive(root: &Path, _type_hint: &str, libs_dir: &Path) -> Result<()> {
+fn patch_rpath_recursive(root: &Path, libs_dir: &Path) -> Result<()> {
     if !root.exists() {
         return Ok(());
     }
@@ -429,7 +435,7 @@ fn patch_rpath_recursive(root: &Path, _type_hint: &str, libs_dir: &Path) -> Resu
     for entry in walkdir::WalkDir::new(root) {
         let entry = entry?;
         let path = entry.path();
-        
+
         if !path.is_file() {
             continue;
         }
@@ -444,14 +450,62 @@ fn patch_rpath_recursive(root: &Path, _type_hint: &str, libs_dir: &Path) -> Resu
 
             if let Some(rel) = relative_to_libs {
                 let origin_path = format!("$ORIGIN/{}", rel.display());
+                // Set RPATH
                 let _ = Command::new("patchelf")
                     .arg("--set-rpath")
                     .arg(&origin_path)
                     .arg(path)
                     .output();
+                // Force RPATH instead of RUNPATH (RPATH takes precedence)
+                let _ = Command::new("patchelf")
+                    .arg("--force-rpath")
+                    .arg(path)
+                    .output();
             }
         }
     }
+    Ok(())
+}
+
+fn create_soname_symlinks(libs_dir: &Path) -> Result<()> {
+    println!("  Creating SONAME symlinks...");
+    let mut created = 0;
+
+    if let Ok(entries) = fs::read_dir(libs_dir) {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if !path.is_file() {
+                continue;
+            }
+
+            if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
+                // Match patterns like libQt6Core.so.6.6.0 or libQt6Core.so.6.8.0
+                if name.starts_with("libQt6") && name.contains(".so.") {
+                    // Extract SONAME (e.g., libQt6Core.so.6 from libQt6Core.so.6.6.0)
+                    if let Some(pos) = name.find(".so.") {
+                        let after_so = &name[pos + 4..]; // e.g., "6.6.0"
+                        if let Some(dot_pos) = after_so.find('.') {
+                            let major = &after_so[..dot_pos]; // e.g., "6"
+                            let soname = format!("{}.so.{}", &name[..pos], major);
+                            let symlink_path = libs_dir.join(&soname);
+
+                            if !symlink_path.exists() {
+                                #[cfg(unix)]
+                                {
+                                    use std::os::unix::fs::symlink;
+                                    if symlink(name, &symlink_path).is_ok() {
+                                        created += 1;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    println!("    Created {} symlinks", created);
     Ok(())
 }
 
