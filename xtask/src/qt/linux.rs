@@ -217,22 +217,10 @@ fn create_distribution(
 
     bundle_misc_libraries(&libs_dir, &qt_lib_path)?;
 
-    // FIX 1: Disabled bundling of system-level HAL libraries (libxcb, libwayland, etc.)
-    // These must come from the user's OS to match the kernel/drivers.
-    // bundle_xcb_libraries(&libs_dir)?;
-
     if check_command_exists("patchelf") {
         println!("  Setting RPATH with patchelf...");
-        // It is safe to patch the binary and the shared libs
         patch_rpath_recursive(&bin_dir, "lib", &libs_dir)?;
         patch_rpath_recursive(&libs_dir, "lib", &libs_dir)?;
-        
-        // FIX 2: Disabled patchelf on plugins.
-        // Patchelf corrupts the .qtmetadata section in plugins, causing "metadata not found".
-        // The wrapper script sets LD_LIBRARY_PATH, which is sufficient.
-        
-        // patch_rpath_recursive(&plugins_dir, "plugin", &libs_dir)?;
-        // patch_rpath_recursive(&qml_dir, "qml", &libs_dir)?;
     } else {
         println!("  Warning: patchelf not found. RPATH not set.");
     }
@@ -286,7 +274,6 @@ fn resolve_libraries_recursive(
 
     let stdout = String::from_utf8_lossy(&output.stdout);
 
-    // FIX 3: Expanded blacklist to ignore system libs that crash if bundled.
     let skip_libs = [
         "linux-vdso",
         "libgcc_s",
@@ -361,13 +348,11 @@ fn resolve_libraries_recursive(
 }
 
 fn bundle_misc_libraries(libs_dir: &Path, qt_lib_path: &Path) -> Result<()> {
-    // FIX 4: Explicitly force these libraries to be bundled.
-    // This fixes the crash where "Squiggle" visuals fail due to missing ShaderTools.
     let critical_libs = [
         "libQt6Qml.so.6",
         "libQt6QmlWorkerScript.so.6",
         "libQt6Core5Compat.so.6",
-        "libQt6ShaderTools.so.6", // <--- THE CRITICAL MISSING LIBRARY
+        "libQt6ShaderTools.so.6", 
         "libQt6Svg.so.6",
         "libQt6OpenGL.so.6",
         "libQt6WaylandClient.so.6",
@@ -388,8 +373,6 @@ fn bundle_misc_libraries(libs_dir: &Path, qt_lib_path: &Path) -> Result<()> {
                 println!("    + {}", lib_name);
             }
         } else {
-            // FIX 5: Fixed Borrow Checker Error here.
-            // Using &name to borrow instead of move.
             let mut found = false;
             if let Ok(entries) = fs::read_dir(qt_lib_path) {
                 for entry in entries.flatten() {
@@ -398,7 +381,7 @@ fn bundle_misc_libraries(libs_dir: &Path, qt_lib_path: &Path) -> Result<()> {
                     
                     if name_str.starts_with(lib_name) {
                         let real_src = entry.path();
-                        let real_dst = libs_dir.join(&name); // <--- Fixed line
+                        let real_dst = libs_dir.join(&name);
                         if !real_dst.exists() {
                             fs::copy(&real_src, &real_dst)?;
                             println!("    + {} (found as {})", lib_name, name_str);
@@ -414,8 +397,6 @@ fn bundle_misc_libraries(libs_dir: &Path, qt_lib_path: &Path) -> Result<()> {
     }
     Ok(())
 }
-
-// Helper Functions that were missing in previous block
 
 fn create_runner_script(dist_dir: &Path) -> Result<()> {
     let script = r#"#!/bin/bash
@@ -445,7 +426,6 @@ fn patch_rpath_recursive(root: &Path, _type_hint: &str, libs_dir: &Path) -> Resu
         return Ok(());
     }
 
-    // Iterate over all files
     for entry in walkdir::WalkDir::new(root) {
         let entry = entry?;
         let path = entry.path();
@@ -454,22 +434,16 @@ fn patch_rpath_recursive(root: &Path, _type_hint: &str, libs_dir: &Path) -> Resu
             continue;
         }
 
-        // Check if it's an ELF file or .so
         let name = path.file_name().unwrap_or_default().to_string_lossy();
         let is_so = name.ends_with(".so") || name.contains(".so.");
         let is_bin = path.parent().map(|p| p.ends_with("bin")).unwrap_or(false);
 
         if is_so || is_bin {
-            // Calculate relative path from this file's directory to libs_dir
             let file_dir = path.parent().unwrap();
-            
-            // We need to find the path from file_dir to libs_dir
             let relative_to_libs = pathdiff::diff_paths(libs_dir, file_dir);
 
             if let Some(rel) = relative_to_libs {
                 let origin_path = format!("$ORIGIN/{}", rel.display());
-                
-                // Run patchelf
                 let _ = Command::new("patchelf")
                     .arg("--set-rpath")
                     .arg(&origin_path)
