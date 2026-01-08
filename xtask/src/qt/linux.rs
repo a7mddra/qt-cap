@@ -286,6 +286,12 @@ fn resolve_libraries_recursive(
         "libpthread",
         "librt",
         "libdl",
+        "libGL",
+        "libEGL",
+        "libGLX",
+        "libOpenGL",
+        "libdrm",
+        "libglapi",
     ];
 
     for line in stdout.lines() {
@@ -381,6 +387,7 @@ fn bundle_xcb_libraries(libs_dir: &Path) -> Result<()> {
         "libxcb-xkb.so.1",
         "libxkbcommon-x11.so.0",
         "libxkbcommon.so.0",
+        "libxcb-glx.so.0",
     ];
 
     let xcb_dir = xcb_dirs.iter().find(|dir| Path::new(dir).exists());
