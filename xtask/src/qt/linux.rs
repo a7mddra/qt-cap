@@ -292,6 +292,12 @@ fn resolve_libraries_recursive(
         "libOpenGL",
         "libdrm",
         "libglapi",
+        "libstdc++",
+        "libxcb",
+        "libgcc_s",
+        "libglib",
+        "libpcre",
+        "libz",
     ];
 
     for line in stdout.lines() {
@@ -368,6 +374,7 @@ fn bundle_misc_libraries(libs_dir: &Path, qt_lib_path: &Path) -> Result<()> {
 }
 
 fn bundle_xcb_libraries(libs_dir: &Path) -> Result<()> {
+    return Ok(());
     let xcb_dirs = [
         "/usr/lib/x86_64-linux-gnu",
         "/usr/lib64",
