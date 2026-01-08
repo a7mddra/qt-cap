@@ -11,21 +11,28 @@ import QtQuick.Window
  * screenshot as background with either squiggle or rectangle selection mode.
  * 
  * Critical window flags ensure instant appearance without OS animations:
- * - Qt.Tool: Skips taskbar/dock, treated as utility window
- * - Qt.Popup: No focus stealing animation
  * - Qt.FramelessWindowHint: No title bar or borders
+ * - Qt.WindowStaysOnTopHint: Always on top
+ * - Qt.BypassWindowManagerHint: Bypass WM completely (critical for GNOME top bar)
+ * - Qt.Tool: Skips taskbar/dock, treated as utility window
  */
 Window {
     id: root
     
-    // Window flags for instant appearance (no OS animations)
-    // These match the original OverlayWindow.cpp flags exactly
+    // Window flags for true fullscreen overlay (bypasses GNOME panel)
+    // BypassWindowManagerHint is critical - it tells Qt to ignore the WM entirely
     flags: Qt.FramelessWindowHint 
            | Qt.WindowStaysOnTopHint 
-           | Qt.Tool 
-           | Qt.Popup
+           | Qt.BypassWindowManagerHint
+           | Qt.Tool
     
-    visibility: Window.FullScreen
+    // Explicit geometry to cover entire screen (don't rely on FullScreen visibility)
+    x: Screen.virtualX
+    y: Screen.virtualY
+    width: Screen.width
+    height: Screen.height
+    
+    visibility: Window.Windowed  // Use Windowed + explicit geometry, not FullScreen
     color: "transparent"
     
     // Properties set from C++ before showing

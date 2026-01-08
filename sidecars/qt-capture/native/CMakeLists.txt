@@ -17,11 +17,12 @@ if(POLICY CMP0169)
     cmake_policy(SET CMP0169 OLD)
 endif()
 
-# Core Qt packages (keep Widgets for now during incremental migration)
-find_package(Qt6 REQUIRED COMPONENTS Core Gui Widgets)
+# Core Qt packages
+find_package(Qt6 REQUIRED COMPONENTS Core Gui)
 # Qt Quick packages for QML UI (Qt5Compat provides GraphicalEffects)
 find_package(Qt6 REQUIRED COMPONENTS Quick)
 find_package(Qt6 REQUIRED COMPONENTS Core5Compat)
+find_package(Qt6 REQUIRED COMPONENTS Qml)
 if(UNIX AND NOT APPLE)
     find_package(Qt6 REQUIRED COMPONENTS DBus)
 endif()
@@ -33,27 +34,21 @@ configure_file(
 )
 include_directories("${CMAKE_CURRENT_BINARY_DIR}/generated")
 
-# C++ sources (backend - UNTOUCHED)
+# C++ sources (backend)
 set(SOURCES 
     src/main.cpp 
     src/shutter/ScreenGrabber.h
     src/surface/CaptureMode.h
-    # Legacy widget canvases (kept during migration, will be removed later)
-    src/surface/SquiggleCanvas.cpp 
-    src/surface/SquiggleCanvas.h 
-    src/surface/RectangleCanvas.cpp
-    src/surface/RectangleCanvas.h
-    src/surface/OverlayWindow.h
-    # New QML bridge
+    # QML bridge
     src/qml/CaptureController.cpp
     src/qml/CaptureController.h
 )
 
 if(WIN32)
-    list(APPEND SOURCES src/platforms/Shutter_Win.cpp src/surface/OverlayWindow.cpp)
+    list(APPEND SOURCES src/platforms/Shutter_Win.cpp)
     set(PLATFORM_LIBS dwmapi gdiplus user32 gdi32 Shcore)
 elseif(APPLE)
-    list(APPEND SOURCES src/platforms/Shutter_Mac.mm src/surface/OverlayWindow.mm)
+    list(APPEND SOURCES src/platforms/Shutter_Mac.mm)
     
     find_library(FOUNDATION_LIB Foundation)
     find_library(COREGRAPHICS_LIB CoreGraphics)
@@ -65,7 +60,7 @@ elseif(APPLE)
     endif()
     set(PLATFORM_LIBS ${FOUNDATION_LIB} ${COREGRAPHICS_LIB} ${COCOA_LIB} ${APPKIT_LIB})
 elseif(UNIX AND NOT APPLE)
-    list(APPEND SOURCES src/platforms/Shutter_Linux.cpp src/surface/OverlayWindow.cpp)
+    list(APPEND SOURCES src/platforms/Shutter_Linux.cpp)
     set(PLATFORM_LIBS Qt6::DBus)
 endif()
 
@@ -91,8 +86,8 @@ target_include_directories(capture PRIVATE
 )
 
 target_link_libraries(capture PRIVATE 
-    Qt6::Core Qt6::Gui Qt6::Widgets 
-    Qt6::Quick Qt6::Core5Compat
+    Qt6::Core Qt6::Gui 
+    Qt6::Quick Qt6::Core5Compat Qt6::Qml
     ${PLATFORM_LIBS}
 )
 

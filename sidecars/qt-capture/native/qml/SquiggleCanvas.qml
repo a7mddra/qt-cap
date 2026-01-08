@@ -5,12 +5,10 @@ import QtQuick
 import Qt5Compat.GraphicalEffects
 
 /**
- * Freehand drawing canvas with GPU-accelerated white glow.
+ * Freehand drawing canvas with smooth strokes and GPU-accelerated glow.
  * 
  * This is the "Circle to Search" style squiggle selection mode.
- * Uses Qt5Compat.GraphicalEffects Glow for smooth, GPU-rendered glow.
- * 
- * Aesthetic: Clean white stroke with soft gray/white glow. No colors.
+ * Uses quadratic bezier curves for smooth paths and Glow for the effect.
  */
 Item {
     id: root
@@ -21,12 +19,13 @@ Item {
     property var controller
     
     // Drawing state
-    property var points: []
+    property var strokes: []
     property bool isDrawing: false
+    property point lastPoint: Qt.point(0, 0)
     property point currentMouse: Qt.point(0, 0)
     
-    // Smoothing factor (matches original m_smoothingFactor = 0.2)
-    readonly property real smoothingFactor: 0.2
+    // Smoothing factor (0.0 = no smoothing, 1.0 = instant follow)
+    readonly property real smoothingFactor: 0.3
     readonly property real brushSize: 7
     
     // Cursor circle indicator (visible during drawing)
@@ -49,17 +48,17 @@ Item {
         }
     }
     
-    // The drawing canvas (source for glow effect)
+    // The drawing canvas
     Canvas {
         id: canvas
         anchors.fill: parent
-        visible: false  // Hidden, rendered via glow effect
+        renderStrategy: Canvas.Immediate
         
         onPaint: {
             var ctx = getContext("2d")
-            ctx.reset()
+            ctx.clearRect(0, 0, width, height)
             
-            if (root.points.length < 2) return
+            if (root.strokes.length < 2) return
             
             // White stroke, rounded caps for smooth look
             ctx.strokeStyle = "white"
@@ -68,65 +67,37 @@ Item {
             ctx.lineJoin = "round"
             
             ctx.beginPath()
-            ctx.moveTo(root.points[0].x, root.points[0].y)
+            ctx.moveTo(root.strokes[0].x, root.strokes[0].y)
             
             // Smooth quadratic curves through control points
-            for (var i = 1; i < root.points.length - 1; i++) {
-                var xMid = (root.points[i].x + root.points[i + 1].x) / 2
-                var yMid = (root.points[i].y + root.points[i + 1].y) / 2
-                ctx.quadraticCurveTo(root.points[i].x, root.points[i].y, xMid, yMid)
+            for (var i = 1; i < root.strokes.length - 1; i++) {
+                var xMid = (root.strokes[i].x + root.strokes[i + 1].x) / 2
+                var yMid = (root.strokes[i].y + root.strokes[i + 1].y) / 2
+                ctx.quadraticCurveTo(root.strokes[i].x, root.strokes[i].y, xMid, yMid)
             }
             
             // Connect to final point
-            if (root.points.length > 1) {
-                var last = root.points[root.points.length - 1]
-                ctx.lineTo(last.x, last.y)
-            }
+            var last = root.strokes[root.strokes.length - 1]
+            ctx.lineTo(last.x, last.y)
             
             ctx.stroke()
+            // No closePath() - keep it open!
         }
     }
     
-    // GPU-accelerated glow effect (Qt5Compat)
+    // GPU-accelerated glow effect
     Glow {
         anchors.fill: canvas
         source: canvas
         radius: 12
         samples: 25
-        color: Qt.rgba(1, 1, 1, 0.5)  // Soft white glow
+        color: Qt.rgba(1, 1, 1, 0.5)
         spread: 0.2
         cached: false
+        transparentBorder: true
     }
     
-    // Render the actual stroke on top of glow
-    ShaderEffectSource {
-        anchors.fill: canvas
-        sourceItem: canvas
-        live: true
-    }
-    
-    // Cross cursor when not drawing
-    Item {
-        id: crosshair
-        visible: !root.isDrawing && root.points.length === 0
-        x: mouseArea.mouseX
-        y: mouseArea.mouseY
-        
-        Rectangle {
-            width: 1
-            height: 20
-            color: Qt.rgba(1, 1, 1, 0.7)
-            anchors.centerIn: parent
-        }
-        Rectangle {
-            width: 20
-            height: 1
-            color: Qt.rgba(1, 1, 1, 0.7)
-            anchors.centerIn: parent
-        }
-    }
-    
-    // Mouse interaction
+    // Mouse handling
     MouseArea {
         id: mouseArea
         anchors.fill: parent
@@ -134,41 +105,40 @@ Item {
         cursorShape: Qt.CrossCursor
         
         onPressed: function(mouse) {
-            // Clear any previous drawing
-            root.points = []
+            root.strokes = []
             root.isDrawing = true
+            root.lastPoint = Qt.point(mouse.x, mouse.y)
             root.currentMouse = Qt.point(mouse.x, mouse.y)
-            root.points.push(root.currentMouse)
+            root.strokes.push({x: mouse.x, y: mouse.y})
             canvas.requestPaint()
         }
         
         onPositionChanged: function(mouse) {
             root.currentMouse = Qt.point(mouse.x, mouse.y)
             
-            if (root.isDrawing && root.points.length > 0) {
-                // Apply smoothing (matches original algorithm)
-                var prev = root.points[root.points.length - 1]
-                var smoothed = Qt.point(
-                    prev.x * (1 - root.smoothingFactor) + mouse.x * root.smoothingFactor,
-                    prev.y * (1 - root.smoothingFactor) + mouse.y * root.smoothingFactor
-                )
-                root.points.push(smoothed)
-                canvas.requestPaint()
-            }
+            if (!root.isDrawing) return
+            
+            // Apply smoothing
+            var smoothedX = root.lastPoint.x + (mouse.x - root.lastPoint.x) * root.smoothingFactor
+            var smoothedY = root.lastPoint.y + (mouse.y - root.lastPoint.y) * root.smoothingFactor
+            
+            root.lastPoint = Qt.point(smoothedX, smoothedY)
+            root.strokes.push({x: smoothedX, y: smoothedY})
+            canvas.requestPaint()
         }
         
         onReleased: function(mouse) {
-            if (root.isDrawing) {
-                root.isDrawing = false
-                
-                // Convert points array to QVariantList for C++
-                var pointsList = []
-                for (var i = 0; i < root.points.length; i++) {
-                    pointsList.push(root.points[i])
-                }
-                
-                root.controller.finishSquiggleCapture(pointsList)
+            if (!root.isDrawing) return
+            
+            root.isDrawing = false
+            
+            // Convert to QVariantList for C++
+            var pointsList = []
+            for (var i = 0; i < root.strokes.length; i++) {
+                pointsList.push(Qt.point(root.strokes[i].x, root.strokes[i].y))
             }
+            
+            root.controller.finishSquiggleCapture(pointsList)
         }
     }
     

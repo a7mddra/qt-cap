@@ -119,27 +119,6 @@ Item {
         }
     }
     
-    // Crosshair cursor (when not selecting)
-    Item {
-        id: crosshair
-        visible: !root.isDrawing && !root.hasSelection
-        x: mouseArea.mouseX
-        y: mouseArea.mouseY
-        
-        Rectangle {
-            width: 1
-            height: 40
-            color: "white"
-            anchors.centerIn: parent
-        }
-        Rectangle {
-            width: 40
-            height: 1
-            color: "white"
-            anchors.centerIn: parent
-        }
-    }
-    
     // Mouse interaction
     MouseArea {
         id: mouseArea
