@@ -217,14 +217,10 @@ fn create_distribution(
 
     bundle_misc_libraries(&libs_dir, &qt_lib_path)?;
 
-    bundle_xcb_libraries(&libs_dir)?;
-
     if check_command_exists("patchelf") {
         println!("  Setting RPATH with patchelf...");
         patch_rpath_recursive(&bin_dir, "lib", &libs_dir)?;
         patch_rpath_recursive(&libs_dir, "lib", &libs_dir)?;
-        patch_rpath_recursive(&plugins_dir, "plugin", &libs_dir)?;
-        patch_rpath_recursive(&qml_dir, "qml", &libs_dir)?;
     } else {
         println!("  Warning: patchelf not found. RPATH not set.");
     }
@@ -298,6 +294,16 @@ fn resolve_libraries_recursive(
         "libglib",
         "libpcre",
         "libz",
+        "libxcb", 
+        "libX11",
+        "libXext",
+        "libXau",
+        "libXdmcp",
+        "libxkbcommon",
+        "libwayland",
+        "libffi",
+        "libexpat",
+        "libdbus",
     ];
 
     for line in stdout.lines() {
@@ -378,6 +384,9 @@ fn bundle_misc_libraries(libs_dir: &Path, qt_lib_path: &Path) -> Result<()> {
     Ok(())
 }
 
+// NOTE: This function is kept for reference but not called in create_distribution.
+// Bundling these libraries from a Docker container (Ubuntu 20.04) and running on
+// a newer host (Fedora/Arch/Ubuntu 24.04) causes severe ABI conflicts.
 fn bundle_xcb_libraries(libs_dir: &Path) -> Result<()> {
     let xcb_dirs = [
         "/usr/lib/x86_64-linux-gnu",
