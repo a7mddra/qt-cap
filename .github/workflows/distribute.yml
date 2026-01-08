@@ -43,16 +43,16 @@ jobs:
         if: runner.os != 'Windows'
         run: |
           mkdir -p dist-staging/qt-runtime
-          cp target/release/capture-engine dist-staging/capture-engine-${{ matrix.target }}
-          cp -r sidecars/qt-capture/native/dist/* dist-staging/qt-runtime/
+          cp app/binaries/capture-engine-${{ matrix.target }} dist-staging/
+          cp -r app/binaries/qt-runtime/* dist-staging/qt-runtime/
 
       - name: Prepare Artifacts (Windows)
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Path dist-staging/qt-runtime -Force
-          Copy-Item target/release/capture-engine.exe dist-staging/capture-engine-${{ matrix.target }}.exe
-          Copy-Item -Recurse sidecars/qt-capture/native/dist/* dist-staging/qt-runtime/
+          Copy-Item app/binaries/capture-engine-${{ matrix.target }}.exe dist-staging/
+          Copy-Item -Recurse app/binaries/qt-runtime/* dist-staging/qt-runtime/
 
       - name: Upload Capture Artifacts
         uses: actions/upload-artifact@v4

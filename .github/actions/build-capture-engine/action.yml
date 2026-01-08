@@ -15,7 +15,7 @@ runs:
       shell: bash
       run: |
         docker build -t spatial-builder -f sidecars/qt-capture/Dockerfile .
-        docker run --rm -v $PWD:/build -w /build spatial-builder bash -c "cargo xtask build-capture-qt && cargo build --release -p capture-engine"
+        docker run --rm -v $PWD:/build -w /build spatial-builder bash -c "cargo xtask build-capture"
 
     - name: Install Qt (macOS)
       if: runner.os == 'macOS'
@@ -38,22 +38,12 @@ runs:
       if: runner.os == 'Windows'
       uses: ilammy/msvc-dev-cmd@v1
 
-    - name: Build Qt Native (Unix - No Docker)
+    - name: Build Capture Engine (Unix - No Docker)
       if: runner.os == 'macOS'
       shell: bash
-      run: cargo xtask build-capture-qt
+      run: cargo xtask build-capture
 
-    - name: Build Qt Native (Windows)
+    - name: Build Capture Engine (Windows)
       if: runner.os == 'Windows'
       shell: pwsh
-      run: cargo xtask build-capture-qt
-
-    - name: Build Rust Wrapper (Unix)
-      if: runner.os != 'Windows' && runner.os != 'Linux'
-      shell: bash
-      run: cargo build --release -p capture-engine
-
-    - name: Build Rust Wrapper (Windows)
-      if: runner.os == 'Windows'
-      shell: pwsh
-      run: cargo build --release -p capture-engine
+      run: cargo xtask build-capture
