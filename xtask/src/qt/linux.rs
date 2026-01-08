@@ -112,8 +112,8 @@ fn create_runtime_distribution(
          anyhow::bail!("QML source directory not found at {}", qmldir.display());
     }
 
-    let status = Command::new("linuxdeployqt")
-        .arg(&dst_bin)
+    let mut cmd = Command::new("linuxdeployqt");
+    cmd.arg(&dst_bin)
         .args([
             "-bundle-non-qt-libs", 
             "-always-overwrite", 
@@ -121,7 +121,25 @@ fn create_runtime_distribution(
             "-unsupported-allow-new-glibc",
             &format!("-qmake={}", qmake_path),
             &format!("-qmldir={}", qmldir.display())
-        ])
+        ]);
+
+    // Fix: explicitly set LD_LIBRARY_PATH so ldd can find Qt libraries (like libQt6ShaderTools.so.6)
+    if let Ok(qt6_dir) = std::env::var("Qt6_DIR") {
+        let qt_lib_path = Path::new(&qt6_dir).join("lib");
+        if qt_lib_path.exists() {
+             println!("  Setting LD_LIBRARY_PATH to include: {}", qt_lib_path.display());
+             // Append to existing LD_LIBRARY_PATH if any
+             let current_path = std::env::var("LD_LIBRARY_PATH").unwrap_or_default();
+             let new_path = if current_path.is_empty() {
+                 qt_lib_path.to_string_lossy().into_owned()
+             } else {
+                 format!("{}:{}", qt_lib_path.display(), current_path)
+             };
+             cmd.env("LD_LIBRARY_PATH", new_path);
+        }
+    }
+
+    let status = cmd
         .status()
         .context("Failed to execute linuxdeployqt")?;
 
