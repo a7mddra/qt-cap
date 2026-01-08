@@ -348,36 +348,56 @@ fn resolve_libraries_recursive(
 }
 
 fn bundle_misc_libraries(libs_dir: &Path, qt_lib_path: &Path) -> Result<()> {
-    let extra_libs = [
+    // We explicitly list the full filenames we NEED.
+    // We include both the versioned .so.6 and the .so symlink to be safe.
+    let critical_libs = [
         "libQt6Qml.so.6",
         "libQt6QmlWorkerScript.so.6",
         "libQt6Core5Compat.so.6",
-        "libQt6ShaderTools.so.6",
-        "libQt6XcbQpa.so.6",
+        "libQt6ShaderTools.so.6",  // <--- The one causing your crash
+        "libQt6Svg.so.6",          // <--- Often needed for icons
         "libQt6OpenGL.so.6",
         "libQt6WaylandClient.so.6",
         "libQt6WaylandCompositor.so.6",
         "libQt6WlShellIntegration.so.6",
+        "libQt6XcbQpa.so.6",
     ];
 
-    for lib_namesake in extra_libs {
-        
-        let _pattern = format!("{}*", lib_namesake);
-        
-        if let Ok(entries) = fs::read_dir(qt_lib_path) {
-            for entry in entries.flatten() {
-                let path = entry.path();
-                if let Some(name) = path.file_name() {
+    println!("  Bundling critical Qt libraries...");
+
+    for lib_name in critical_libs {
+        let src_path = qt_lib_path.join(lib_name);
+        let dst_path = libs_dir.join(lib_name);
+
+        if src_path.exists() {
+            // fs::copy dereferences symlinks by default, creating a real file at destination.
+            // This is exactly what we want (no broken links).
+            if !dst_path.exists() {
+                fs::copy(&src_path, &dst_path)?;
+                println!("    + {}", lib_name);
+            }
+        } else {
+            // Try finding it with wildcards if the exact version match fails
+            // (e.g. libQt6ShaderTools.so.6.6.0)
+            let mut found = false;
+            if let Ok(entries) = fs::read_dir(qt_lib_path) {
+                for entry in entries.flatten() {
+                    let name = entry.file_name();
                     let name_str = name.to_string_lossy();
-                    if name_str.starts_with(lib_namesake) {
-                        let dst = libs_dir.join(name);
-                         if !dst.exists() {
-                             if path.is_file() {
-                                 fs::copy(&path, &dst)?;
-                             }
-                         }
+                    
+                    if name_str.starts_with(lib_name) {
+                        let real_src = entry.path();
+                        let real_dst = libs_dir.join(name);
+                        if !real_dst.exists() {
+                            fs::copy(&real_src, &real_dst)?;
+                            println!("    + {} (found as {})", lib_name, name_str);
+                        }
+                        found = true;
                     }
                 }
+            }
+            if !found {
+                println!("    ! Warning: Could not find critical lib: {}", lib_name);
             }
         }
     }
