@@ -134,13 +134,6 @@ fn package_artifacts() -> Result<()> {
         anyhow::bail!("Rust binary not found: {}", src_binary_path.display());
     }
 
-    let target_triple = sys_info::os_type().unwrap_or_else(|_| "unknown".to_string()); 
-    // Note: This is a rough guess. Ideally we use the actual target triple from cargo.
-    // But since we are running xtask on the host, we can assume host target.
-    // For now let's construct it properly via rustc or use a hardcoded guess since xtask is local.
-    // A safer bet for now is to just use a fixed suffix or the strict one requested if we knew it.
-    // User requested: ocr-engine-x86_64-unknown-linux-gnu.
-    // We should probably shell out to `rustc -vV` to get host triple or just use a helper.
     let host_triple = get_host_target_triple()?;
     
     let dst_binary_name = format!("capture-engine-{}{}", host_triple, if cfg!(windows) { ".exe" } else { "" });

@@ -112,6 +112,21 @@ fn create_runtime_distribution(
          anyhow::bail!("QML source directory not found at {}", qmldir.display());
     }
 
+    // Remove problematic SQL driver plugins that have external dependencies (mimer, mysql, odbc, psql)
+    // These plugins cause linuxdeployqt to fail because their dependencies aren't available
+    if let Ok(qt6_dir) = std::env::var("Qt6_DIR") {
+        let sqldrivers_dir = Path::new(&qt6_dir).join("plugins").join("sqldrivers");
+        if sqldrivers_dir.exists() {
+            for plugin in ["libqsqlmimer.so", "libqsqlmysql.so", "libqsqlodbc.so", "libqsqlpsql.so"] {
+                let plugin_path = sqldrivers_dir.join(plugin);
+                if plugin_path.exists() {
+                    println!("  Removing problematic SQL plugin: {}", plugin);
+                    let _ = fs::remove_file(&plugin_path);
+                }
+            }
+        }
+    }
+
     let mut cmd = Command::new("linuxdeployqt");
     cmd.arg(&dst_bin)
         .args([
@@ -120,7 +135,7 @@ fn create_runtime_distribution(
             "-verbose=2",
             "-unsupported-allow-new-glibc",
             &format!("-qmake={}", qmake_path),
-            &format!("-qmldir={}", qmldir.display())
+            &format!("-qmldir={}", qmldir.display()),
         ]);
 
     // Fix: explicitly set LD_LIBRARY_PATH so ldd can find Qt libraries (like libQt6ShaderTools.so.6)

@@ -1,6 +1,6 @@
 use anyhow::{Context, Result};
 use std::env;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 pub struct QtPaths {
     pub bin: PathBuf,

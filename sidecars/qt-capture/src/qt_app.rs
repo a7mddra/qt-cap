@@ -73,7 +73,6 @@ impl QtApp {
                                 capture_success = true;
                             }
                             "CAPTURE_FAIL" => {
-                                capture_success = false;
                                 break;
                             }
                             _ => {
