@@ -15,9 +15,9 @@
 #include <vector>
 
 #include "config.h"
-#include "surface/CaptureMode.h"
-#include "shutter/ScreenGrabber.h"
-#include "qml/CaptureController.h"
+#include "core/CaptureMode.h"
+#include "core/ScreenGrabber.h"
+#include "controller/CaptureController.h"
 
 #ifdef Q_OS_WIN
 #include <windows.h>

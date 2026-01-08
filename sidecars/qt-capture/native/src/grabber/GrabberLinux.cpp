@@ -217,7 +217,7 @@ private:
 };
 
 #if defined(Q_OS_LINUX)
-#include "Shutter_Linux.moc"
+#include "GrabberLinux.moc"
 
 extern "C" ScreenGrabber *createUnixEngine(QObject *parent)
 {

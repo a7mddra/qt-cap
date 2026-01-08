@@ -28,7 +28,7 @@ if(UNIX AND NOT APPLE)
 endif()
 
 configure_file(
-    "${CMAKE_CURRENT_SOURCE_DIR}/config.h.in"
+    "${CMAKE_CURRENT_SOURCE_DIR}/cmake/config.h.in"
     "${CMAKE_CURRENT_BINARY_DIR}/generated/config.h"
     @ONLY
 )
@@ -37,18 +37,17 @@ include_directories("${CMAKE_CURRENT_BINARY_DIR}/generated")
 # C++ sources (backend)
 set(SOURCES 
     src/main.cpp 
-    src/shutter/ScreenGrabber.h
-    src/surface/CaptureMode.h
-    # QML bridge
-    src/qml/CaptureController.cpp
-    src/qml/CaptureController.h
+    src/core/ScreenGrabber.h
+    src/core/CaptureMode.h
+    src/controller/CaptureController.cpp
+    src/controller/CaptureController.h
 )
 
 if(WIN32)
-    list(APPEND SOURCES src/platforms/Shutter_Win.cpp)
+    list(APPEND SOURCES src/grabber/GrabberWin.cpp)
     set(PLATFORM_LIBS dwmapi gdiplus user32 gdi32 Shcore)
 elseif(APPLE)
-    list(APPEND SOURCES src/platforms/Shutter_Mac.mm)
+    list(APPEND SOURCES src/grabber/GrabberMac.mm)
     
     find_library(FOUNDATION_LIB Foundation)
     find_library(COREGRAPHICS_LIB CoreGraphics)
@@ -60,7 +59,7 @@ elseif(APPLE)
     endif()
     set(PLATFORM_LIBS ${FOUNDATION_LIB} ${COREGRAPHICS_LIB} ${COCOA_LIB} ${APPKIT_LIB})
 elseif(UNIX AND NOT APPLE)
-    list(APPEND SOURCES src/platforms/Shutter_Linux.cpp)
+    list(APPEND SOURCES src/grabber/GrabberLinux.cpp)
     set(PLATFORM_LIBS Qt6::DBus)
 endif()
 
@@ -78,11 +77,9 @@ qt_add_qml_module(capture
 )
 
 target_include_directories(capture PRIVATE 
-    src/shutter
-    src/surface
-    src/platforms
-    src/interface
-    src/qml
+    src/core
+    src/grabber
+    src/controller
 )
 
 target_link_libraries(capture PRIVATE 
