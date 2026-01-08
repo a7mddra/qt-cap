@@ -468,35 +468,32 @@ fn patch_rpath_recursive(root: &Path, libs_dir: &Path) -> Result<()> {
 }
 
 fn create_soname_symlinks(libs_dir: &Path) -> Result<()> {
-    println!("  Creating SONAME symlinks...");
+    println!("  Creating SONAME copies...");
     let mut created = 0;
 
-    if let Ok(entries) = fs::read_dir(libs_dir) {
-        for entry in entries.flatten() {
-            let path = entry.path();
-            if !path.is_file() {
-                continue;
-            }
+    // Collect files first to avoid modifying while iterating
+    let files: Vec<_> = fs::read_dir(libs_dir)?
+        .flatten()
+        .filter(|e| e.path().is_file())
+        .collect();
 
-            if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
-                // Match patterns like libQt6Core.so.6.6.0 or libQt6Core.so.6.8.0
-                if name.starts_with("libQt6") && name.contains(".so.") {
-                    // Extract SONAME (e.g., libQt6Core.so.6 from libQt6Core.so.6.6.0)
-                    if let Some(pos) = name.find(".so.") {
-                        let after_so = &name[pos + 4..]; // e.g., "6.6.0"
-                        if let Some(dot_pos) = after_so.find('.') {
-                            let major = &after_so[..dot_pos]; // e.g., "6"
-                            let soname = format!("{}.so.{}", &name[..pos], major);
-                            let symlink_path = libs_dir.join(&soname);
+    for entry in files {
+        let path = entry.path();
+        if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
+            // Match patterns like libQt6Core.so.6.6.0 or libQt6Core.so.6.8.0
+            if name.starts_with("libQt6") && name.contains(".so.") {
+                // Extract SONAME (e.g., libQt6Core.so.6 from libQt6Core.so.6.6.0)
+                if let Some(pos) = name.find(".so.") {
+                    let after_so = &name[pos + 4..]; // e.g., "6.6.0"
+                    if let Some(dot_pos) = after_so.find('.') {
+                        let major = &after_so[..dot_pos]; // e.g., "6"
+                        let soname = format!("{}.so.{}", &name[..pos], major);
+                        let soname_path = libs_dir.join(&soname);
 
-                            if !symlink_path.exists() {
-                                #[cfg(unix)]
-                                {
-                                    use std::os::unix::fs::symlink;
-                                    if symlink(name, &symlink_path).is_ok() {
-                                        created += 1;
-                                    }
-                                }
+                        // Copy instead of symlink (symlinks don't survive zip)
+                        if !soname_path.exists() {
+                            if fs::copy(&path, &soname_path).is_ok() {
+                                created += 1;
                             }
                         }
                     }
@@ -505,7 +502,7 @@ fn create_soname_symlinks(libs_dir: &Path) -> Result<()> {
         }
     }
 
-    println!("    Created {} symlinks", created);
+    println!("    Created {} SONAME copies", created);
     Ok(())
 }
 
