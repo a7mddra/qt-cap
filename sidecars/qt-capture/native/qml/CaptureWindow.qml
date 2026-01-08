@@ -16,29 +16,24 @@ import QtQuick.Window
  * - Qt.BypassWindowManagerHint: Bypass WM completely (critical for GNOME top bar)
  * - Qt.Tool: Skips taskbar/dock, treated as utility window
  */
+
 Window {
     id: root
     
-    // Window flags for true fullscreen overlay (bypasses GNOME panel)
-    // BypassWindowManagerHint is critical - it tells Qt to ignore the WM entirely
     flags: Qt.FramelessWindowHint 
            | Qt.WindowStaysOnTopHint 
            | Qt.BypassWindowManagerHint
            | Qt.Tool
     
-    // Explicit geometry to cover entire screen (don't rely on FullScreen visibility)
     x: Screen.virtualX
     y: Screen.virtualY
     width: Screen.width
     height: Screen.height
     
-    visibility: Window.Windowed  // Use Windowed + explicit geometry, not FullScreen
     color: "transparent"
     
-    // Properties set from C++ before showing
     required property var controller
     
-    // Frozen screenshot background
     Image {
         id: background
         anchors.fill: parent
@@ -47,7 +42,6 @@ Window {
         cache: false
     }
     
-    // Animated dim overlay (top-to-bottom gradient, matches original)
     Rectangle {
         id: dimOverlay
         anchors.fill: parent
@@ -59,7 +53,6 @@ Window {
             GradientStop { position: 1.0; color: "transparent" }
         }
         
-        // Fade in animation (200ms, matches original m_animation duration)
         NumberAnimation on opacity {
             from: 0; to: 1
             duration: 200
@@ -68,7 +61,6 @@ Window {
         }
     }
     
-    // Canvas loader - switches between draw modes
     Loader {
         id: canvasLoader
         anchors.fill: parent
@@ -79,7 +71,6 @@ Window {
             : "SquiggleCanvas.qml"
         
         onLoaded: {
-            // Pass controller to loaded canvas
             if (item) {
                 item.controller = root.controller
                 item.forceActiveFocus()
@@ -87,7 +78,6 @@ Window {
         }
     }
     
-    // Global keyboard shortcuts
     Shortcut {
         sequence: "Escape"
         onActivated: root.controller.cancel()
@@ -98,7 +88,6 @@ Window {
         onActivated: root.controller.cancel()
     }
     
-    // Ensure window is focused when shown
     Component.onCompleted: {
         root.requestActivate()
     }

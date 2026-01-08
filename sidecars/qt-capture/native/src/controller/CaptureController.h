@@ -37,17 +37,14 @@ public:
     explicit CaptureController(QObject *parent = nullptr);
     ~CaptureController() override = default;
     
-    // Setup methods called from C++ before showing QML window
     void setBackgroundImage(const QImage &image, qreal devicePixelRatio);
     
-    // Property accessors
     QUrl backgroundSource() const { return m_backgroundSource; }
     QString captureMode() const { return m_captureMode; }
     void setCaptureMode(const QString &mode);
     int displayIndex() const { return m_displayIndex; }
     void setDisplayIndex(int index);
     
-    // QML-callable methods
     Q_INVOKABLE void cancel();
     Q_INVOKABLE void finishSquiggleCapture(const QVariantList &points);
     Q_INVOKABLE void finishRectCapture(QPointF start, QPointF end);

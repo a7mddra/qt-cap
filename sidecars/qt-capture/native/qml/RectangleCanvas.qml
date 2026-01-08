@@ -7,41 +7,55 @@ import Qt5Compat.GraphicalEffects
 /**
  * Rectangle selection canvas.
  * 
- * Provides a click-and-drag rectangle selection with:
- * - Dimmed overlay outside selection
- * - White border with corner handles
- * - Dimension label below selection
- * - Crosshair cursor when idle
- * 
- * Aesthetic: Clean monochrome, matches the squiggle canvas style.
+ * Features:
+ * - Sharp corner at cursor position, rounded elsewhere
+ * - 65% brightness dim overlay outside selection
+ * - Gradient stroke for shine/sparkle effect
+ * - Smooth outer glow
  */
+
 Item {
     id: root
     anchors.fill: parent
     focus: true
     
-    // Controller reference (set by CaptureWindow loader)
     property var controller
     
-    // Selection state
     property point startPoint: Qt.point(0, 0)
     property point endPoint: Qt.point(0, 0)
     property bool isDrawing: false
     property bool hasSelection: false
     
-    // Computed normalized rectangle
     readonly property real selX: Math.min(startPoint.x, endPoint.x)
     readonly property real selY: Math.min(startPoint.y, endPoint.y)
     readonly property real selW: Math.abs(endPoint.x - startPoint.x)
     readonly property real selH: Math.abs(endPoint.y - startPoint.y)
     
-    // Dim overlay with cutout for selection
+    property real glowIntensity: 0.0
+    readonly property real targetGlowIntensity: {
+        if (!isDrawing && !hasSelection) return 0.0
+        var area = selW * selH
+        var maxArea = root.width * root.height
+        var normalizedArea = Math.min(area / maxArea, 1.0)
+        return 0.3 + (1.0 - normalizedArea) * 0.5
+    }
+    
+    Behavior on glowIntensity {
+        NumberAnimation {
+            duration: 800
+            easing.type: Easing.InOutCubic
+        }
+    }
+    
+    onTargetGlowIntensityChanged: {
+        glowIntensity = targetGlowIntensity
+    }
+    
     Canvas {
         id: dimCanvas
         anchors.fill: parent
         opacity: 0
 
-        // Fade in animation (matches CaptureWindow original)
         NumberAnimation on opacity {
             from: 0; to: 1
             duration: 200
@@ -53,29 +67,18 @@ Item {
             var ctx = getContext("2d")
             ctx.reset()
             
-            // Gradient dim overlay (matches original look)
-            // Top is darker (gradient + base dim), bottom is lighter (base dim only)
-            var grad = ctx.createLinearGradient(0, 0, 0, height);
-            grad.addColorStop(0.0, Qt.rgba(0, 0, 0, 0.65));
-            grad.addColorStop(1.0, Qt.rgba(0, 0, 0, 0.35));
-            
-            ctx.fillStyle = grad
+            ctx.fillStyle = Qt.rgba(0, 0, 0, 0.35)
             ctx.fillRect(0, 0, width, height)
             
-            // Cut out the selection area
             if (root.isDrawing || root.hasSelection) {
                 ctx.globalCompositeOperation = "destination-out"
                 ctx.fillStyle = "white"
-                
-                // Use shared path logic to match border
                 root.drawSelectionPath(ctx, root.selX, root.selY, root.selW, root.selH)
-                
                 ctx.fill()
             }
         }
     }
     
-    // Repaint dim canvas when selection changes
     Connections {
         target: root
         function onStartPointChanged() { dimCanvas.requestPaint() }
@@ -83,42 +86,31 @@ Item {
         function onIsDrawingChanged() { dimCanvas.requestPaint() }
     }
     
-    // Shared path drawing logic for consistent rounded/sharp corners
     function drawSelectionPath(ctx, x, y, w, h) {
-        // Dynamic radius: Max 24, but shrink if rect is too small to avoid artifacts
-        var r = Math.min(24, Math.min(w, h) / 2)
+        var baseRadius = Math.min(24, Math.min(w, h) / 2)
         
-        // Determine which corner matches the current mouse (endPoint)
-        // normalized relative to the rect
-        var tl = r, tr = r, br = r, bl = r
+        var tl = baseRadius, tr = baseRadius, br = baseRadius, bl = baseRadius
         
-        // Logic: The corner corresponding to endPoint gets 0 radius
         if (root.endPoint.x >= root.startPoint.x) {
-            // Mouse is to the right
-            if (root.endPoint.y >= root.startPoint.y) br = 0 // Bottom-Right
-            else tr = 0 // Top-Right
+            if (root.endPoint.y >= root.startPoint.y) br = 0
+            else tr = 0
         } else {
-            // Mouse is to the left
-            if (root.endPoint.y >= root.startPoint.y) bl = 0 // Bottom-Left
-            else tl = 0 // Top-Left
+            if (root.endPoint.y >= root.startPoint.y) bl = 0
+            else tl = 0
         }
         
         ctx.beginPath()
         
-        // Top edge
         ctx.moveTo(x + tl, y)
         ctx.lineTo(x + w - tr, y)
         if (tr > 0) ctx.quadraticCurveTo(x + w, y, x + w, y + tr)
         
-        // Right edge
         ctx.lineTo(x + w, y + h - br)
         if (br > 0) ctx.quadraticCurveTo(x + w, y + h, x + w - br, y + h)
         
-        // Bottom edge
         ctx.lineTo(x + bl, y + h)
         if (bl > 0) ctx.quadraticCurveTo(x, y + h, x, y + h - bl)
         
-        // Left edge
         ctx.lineTo(x, y + tl)
         if (tl > 0) ctx.quadraticCurveTo(x, y, x + tl, y)
         
@@ -134,11 +126,23 @@ Item {
             var ctx = getContext("2d")
             ctx.reset()
             
+            var centerX = root.selX + root.selW / 2
+            var centerY = root.selY + root.selH / 2
+            var maxDim = Math.max(root.selW, root.selH)
+            
+            var gradient = ctx.createRadialGradient(
+                centerX, centerY, 0,
+                centerX, centerY, maxDim * 0.8
+            )
+            
+            gradient.addColorStop(0.0, Qt.rgba(1, 1, 1, 0.95))
+            gradient.addColorStop(0.5, Qt.rgba(0.9, 0.9, 0.9, 0.8))
+            gradient.addColorStop(1.0, Qt.rgba(0.7, 0.7, 0.7, 0.6))
+            
             ctx.lineWidth = 2
-            ctx.strokeStyle = "white"
+            ctx.strokeStyle = gradient
             
             root.drawSelectionPath(ctx, root.selX, root.selY, root.selW, root.selH)
-            
             ctx.stroke()
         }
         
@@ -150,23 +154,18 @@ Item {
         }
     }
     
-
-    
-    // Mask to clip the glow from the inside (keeps the selection 100% native)
     Canvas {
         id: glowMask
         anchors.fill: parent
-        visible: false // Used as mask only
+        visible: false
         
         onPaint: {
             var ctx = getContext("2d")
             ctx.reset()
             
-            // Opaque outside
             ctx.fillStyle = "black"
             ctx.fillRect(0, 0, width, height)
             
-            // Cut out inside (make transparent)
             if (root.isDrawing || root.hasSelection) {
                 ctx.globalCompositeOperation = "destination-out"
                 ctx.fillStyle = "white"
@@ -183,42 +182,69 @@ Item {
         }
     }
 
-    // Glow Container with Masking
     Item {
         id: glowWrapper
         anchors.fill: parent
         visible: selectionBorderCanvas.visible
+        opacity: root.glowIntensity
         
-        // Layer 1: Wide smoke (Boosted opacity)
+        Behavior on opacity {
+            NumberAnimation {
+                duration: 800
+                easing.type: Easing.InOutCubic
+            }
+        }
+        
         Glow {
             anchors.fill: selectionBorderCanvas
             source: selectionBorderCanvas
-            radius: 64
+            radius: 48 * root.glowIntensity
             samples: 64
-            color: Qt.rgba(1, 1, 1, 0.8) // Was 0.3, now 0.8 for visibility
+            color: Qt.rgba(255, 255, 255, 0.6)
             spread: 0.0
             transparentBorder: true
+            
+            Behavior on radius {
+                NumberAnimation {
+                    duration: 800
+                    easing.type: Easing.InOutCubic
+                }
+            }
         }
 
-        // Layer 2: Tight aura (Boosted opacity)
         Glow {
             anchors.fill: selectionBorderCanvas
             source: selectionBorderCanvas
-            radius: 16
+            radius: 20 * root.glowIntensity
             samples: 32
-            color: Qt.rgba(1, 1, 1, 0.9) // Was 0.4, now 0.9
-            spread: 0.1
+            color: Qt.rgba(255, 255, 255, 0.8)
+            spread: 0.15
+            transparentBorder: true
+            
+            Behavior on radius {
+                NumberAnimation {
+                    duration: 800
+                    easing.type: Easing.InOutCubic
+                }
+            }
+        }
+        
+        Glow {
+            anchors.fill: selectionBorderCanvas
+            source: selectionBorderCanvas
+            radius: 8
+            samples: 16
+            color: Qt.rgba(255, 255, 255, 0.9)
+            spread: 0.3
             transparentBorder: true
         }
         
-        // Clip the inside of the glow so it doesn't fog up the selection
         layer.enabled: true
         layer.effect: OpacityMask {
             maskSource: glowMask
         }
     }
 
-    // Mouse interaction
     MouseArea {
         id: mouseArea
         anchors.fill: parent
@@ -226,7 +252,6 @@ Item {
         cursorShape: Qt.CrossCursor
         
         onPressed: function(mouse) {
-            // Start new selection
             root.startPoint = Qt.point(mouse.x, mouse.y)
             root.endPoint = root.startPoint
             root.isDrawing = true
@@ -244,14 +269,11 @@ Item {
                 root.endPoint = Qt.point(mouse.x, mouse.y)
                 root.isDrawing = false
                 root.hasSelection = true
-                
-                // Send to controller
                 root.controller.finishRectCapture(root.startPoint, root.endPoint)
             }
         }
     }
     
-    // Keyboard handling
     Keys.onPressed: function(event) {
         if (event.key === Qt.Key_Escape || event.key === Qt.Key_Q) {
             root.controller.cancel()

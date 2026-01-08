@@ -336,13 +336,9 @@ fn bundle_misc_libraries(libs_dir: &Path, qt_lib_path: &Path) -> Result<()> {
     ];
 
     for lib_namesake in extra_libs {
-        // Find the actual file (resolving symlinks if needed or just copying what we find)
-        // We look for files starting with the name in qt_lib_path
         
-        // Simple approach: look for exact match or .so.6.*
-        let pattern = format!("{}*", lib_namesake);
+        let _pattern = format!("{}*", lib_namesake);
         
-        // We need to find the files in qt_lib_path
         if let Ok(entries) = fs::read_dir(qt_lib_path) {
             for entry in entries.flatten() {
                 let path = entry.path();
@@ -351,7 +347,6 @@ fn bundle_misc_libraries(libs_dir: &Path, qt_lib_path: &Path) -> Result<()> {
                     if name_str.starts_with(lib_namesake) {
                         let dst = libs_dir.join(name);
                          if !dst.exists() {
-                             // verify it is a file
                              if path.is_file() {
                                  fs::copy(&path, &dst)?;
                              }

@@ -22,7 +22,6 @@ void CaptureController::setBackgroundImage(const QImage &image, qreal devicePixe
     m_backgroundImage = image;
     m_devicePixelRatio = devicePixelRatio > 0 ? devicePixelRatio : 1.0;
     
-    // Save to temp file for QML Image source
     QString tempPath = QDir::temp().filePath(
         QString("capture_bg_%1.png").arg(m_displayIndex)
     );
@@ -72,13 +71,12 @@ void CaptureController::finishSquiggleCapture(const QVariantList &points)
         return;
     }
     
-    // Calculate bounding box from points
     qreal minX = std::numeric_limits<qreal>::max();
     qreal maxX = std::numeric_limits<qreal>::lowest();
     qreal minY = std::numeric_limits<qreal>::max();
     qreal maxY = std::numeric_limits<qreal>::lowest();
     
-    const qreal margin = 10.0; // Brush size + glow padding
+    const qreal margin = 10.0;
     
     for (const QVariant &v : points)
     {
@@ -89,7 +87,6 @@ void CaptureController::finishSquiggleCapture(const QVariantList &points)
         maxY = qMax(maxY, pt.y());
     }
     
-    // Add margin for stroke width
     minX -= margin;
     maxX += margin;
     minY -= margin;
@@ -122,13 +119,11 @@ void CaptureController::finishRectCapture(QPointF start, QPointF end)
 
 void CaptureController::cropAndSave(const QRectF &logicalRect)
 {
-    // Convert logical coordinates to physical pixels
     int physX = qRound(logicalRect.x() * m_devicePixelRatio);
     int physY = qRound(logicalRect.y() * m_devicePixelRatio);
     int physW = qRound(logicalRect.width() * m_devicePixelRatio);
     int physH = qRound(logicalRect.height() * m_devicePixelRatio);
     
-    // Clamp to image bounds
     physX = qMax(0, physX);
     physY = qMax(0, physY);
     

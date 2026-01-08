@@ -10,25 +10,22 @@ import Qt5Compat.GraphicalEffects
  * This is the "Circle to Search" style squiggle selection mode.
  * Uses quadratic bezier curves for smooth paths and Glow for the effect.
  */
+
 Item {
     id: root
     anchors.fill: parent
     focus: true
     
-    // Controller reference (set by CaptureWindow loader)
     property var controller
     
-    // Drawing state
     property var strokes: []
     property bool isDrawing: false
     property point lastPoint: Qt.point(0, 0)
     property point currentMouse: Qt.point(0, 0)
     
-    // Smoothing factor (0.0 = no smoothing, 1.0 = instant follow)
     readonly property real smoothingFactor: 0.3
     readonly property real brushSize: 7
     
-    // Cursor circle indicator (visible during drawing)
     Rectangle {
         id: cursorCircle
         width: 56
@@ -39,7 +36,6 @@ Item {
         x: root.currentMouse.x - 28
         y: root.currentMouse.y - 28
         
-        // Subtle pulse animation
         SequentialAnimation on scale {
             running: root.isDrawing
             loops: Animation.Infinite
@@ -48,7 +44,6 @@ Item {
         }
     }
     
-    // The drawing canvas
     Canvas {
         id: canvas
         anchors.fill: parent
@@ -60,7 +55,6 @@ Item {
             
             if (root.strokes.length < 2) return
             
-            // White stroke, rounded caps for smooth look
             ctx.strokeStyle = "white"
             ctx.lineWidth = root.brushSize
             ctx.lineCap = "round"
@@ -69,23 +63,19 @@ Item {
             ctx.beginPath()
             ctx.moveTo(root.strokes[0].x, root.strokes[0].y)
             
-            // Smooth quadratic curves through control points
             for (var i = 1; i < root.strokes.length - 1; i++) {
                 var xMid = (root.strokes[i].x + root.strokes[i + 1].x) / 2
                 var yMid = (root.strokes[i].y + root.strokes[i + 1].y) / 2
                 ctx.quadraticCurveTo(root.strokes[i].x, root.strokes[i].y, xMid, yMid)
             }
             
-            // Connect to final point
             var last = root.strokes[root.strokes.length - 1]
             ctx.lineTo(last.x, last.y)
             
             ctx.stroke()
-            // No closePath() - keep it open!
         }
     }
     
-    // GPU-accelerated glow effect
     Glow {
         anchors.fill: canvas
         source: canvas
@@ -97,7 +87,6 @@ Item {
         transparentBorder: true
     }
     
-    // Mouse handling
     MouseArea {
         id: mouseArea
         anchors.fill: parent
@@ -118,7 +107,6 @@ Item {
             
             if (!root.isDrawing) return
             
-            // Apply smoothing
             var smoothedX = root.lastPoint.x + (mouse.x - root.lastPoint.x) * root.smoothingFactor
             var smoothedY = root.lastPoint.y + (mouse.y - root.lastPoint.y) * root.smoothingFactor
             
@@ -132,7 +120,6 @@ Item {
             
             root.isDrawing = false
             
-            // Convert to QVariantList for C++
             var pointsList = []
             for (var i = 0; i < root.strokes.length; i++) {
                 pointsList.push(Qt.point(root.strokes[i].x, root.strokes[i].y))
@@ -142,7 +129,6 @@ Item {
         }
     }
     
-    // Keyboard handling
     Keys.onPressed: function(event) {
         if (event.key === Qt.Key_Escape || event.key === Qt.Key_Q) {
             root.controller.cancel()

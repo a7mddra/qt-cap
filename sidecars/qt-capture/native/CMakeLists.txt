@@ -11,15 +11,12 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_AUTOMOC ON)
 set(CMAKE_AUTORCC ON)
 
-# Qt Quick requires these policies for qt_add_qml_module
 cmake_policy(SET CMP0071 NEW)
 if(POLICY CMP0169)
     cmake_policy(SET CMP0169 OLD)
 endif()
 
-# Core Qt packages
 find_package(Qt6 REQUIRED COMPONENTS Core Gui)
-# Qt Quick packages for QML UI (Qt5Compat provides GraphicalEffects)
 find_package(Qt6 REQUIRED COMPONENTS Quick)
 find_package(Qt6 REQUIRED COMPONENTS Core5Compat)
 find_package(Qt6 REQUIRED COMPONENTS Qml)
@@ -34,7 +31,6 @@ configure_file(
 )
 include_directories("${CMAKE_CURRENT_BINARY_DIR}/generated")
 
-# C++ sources (backend)
 set(SOURCES 
     src/main.cpp 
     src/core/ScreenGrabber.h
@@ -63,10 +59,8 @@ elseif(UNIX AND NOT APPLE)
     set(PLATFORM_LIBS Qt6::DBus)
 endif()
 
-# Create executable with QML module
 qt_add_executable(capture WIN32 MACOSX_BUNDLE ${SOURCES})
 
-# Add QML module for the capture UI
 qt_add_qml_module(capture
     URI CaptureQml
     VERSION 1.0
