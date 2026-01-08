@@ -217,10 +217,23 @@ fn create_distribution(
 
     bundle_misc_libraries(&libs_dir, &qt_lib_path)?;
 
+    // FIX: Do NOT bundle system-level XCB libraries. 
+    // They must match the host system (kernel/driver), not the build environment.
+    // bundle_xcb_libraries(&libs_dir)?;
+
     if check_command_exists("patchelf") {
         println!("  Setting RPATH with patchelf...");
+        // It is safe to patch the binary and the shared libs
         patch_rpath_recursive(&bin_dir, "lib", &libs_dir)?;
         patch_rpath_recursive(&libs_dir, "lib", &libs_dir)?;
+        
+        // FIX: Do NOT run patchelf on Qt Plugins or QML files.
+        // Old versions of patchelf (common in Ubuntu 20.04) corrupt the .qtmetadata section,
+        // causing "metadata not found" and "not a plugin" errors.
+        // The runner script already sets LD_LIBRARY_PATH, so RPATH is not strictly needed for plugins.
+        
+        // patch_rpath_recursive(&plugins_dir, "plugin", &libs_dir)?;
+        // patch_rpath_recursive(&qml_dir, "qml", &libs_dir)?;
     } else {
         println!("  Warning: patchelf not found. RPATH not set.");
     }
@@ -274,6 +287,7 @@ fn resolve_libraries_recursive(
 
     let stdout = String::from_utf8_lossy(&output.stdout);
 
+    // FIX: Enhanced skip list to prevent bundling HAL/System libraries
     let skip_libs = [
         "linux-vdso",
         "libgcc_s",
@@ -294,6 +308,7 @@ fn resolve_libraries_recursive(
         "libglib",
         "libpcre",
         "libz",
+        // System libraries that should ALWAYS come from the host OS:
         "libxcb", 
         "libX11",
         "libXext",
@@ -370,8 +385,6 @@ fn bundle_misc_libraries(libs_dir: &Path, qt_lib_path: &Path) -> Result<()> {
         let dst_path = libs_dir.join(lib_name);
 
         if src_path.exists() {
-            // fs::copy dereferences symlinks by default, creating a real file at destination.
-            // This is exactly what we want (no broken links).
             if !dst_path.exists() {
                 fs::copy(&src_path, &dst_path)?;
                 println!("    + {}", lib_name);
@@ -387,7 +400,8 @@ fn bundle_misc_libraries(libs_dir: &Path, qt_lib_path: &Path) -> Result<()> {
                     
                     if name_str.starts_with(lib_name) {
                         let real_src = entry.path();
-                        let real_dst = libs_dir.join(name);
+                        // FIXED: Pass `&name` to join to borrow it, so we can use `name_str` below
+                        let real_dst = libs_dir.join(&name); 
                         if !real_dst.exists() {
                             fs::copy(&real_src, &real_dst)?;
                             println!("    + {} (found as {})", lib_name, name_str);
