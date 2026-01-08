@@ -52,6 +52,7 @@ Window {
         id: dimOverlay
         anchors.fill: parent
         opacity: 0
+        visible: root.controller.captureMode !== "rectangle"
         
         gradient: Gradient {
             GradientStop { position: 0.0; color: Qt.rgba(0, 0, 0, 0.5) }

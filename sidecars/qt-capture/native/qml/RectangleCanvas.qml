@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import QtQuick
+import Qt5Compat.GraphicalEffects
 
 /**
  * Rectangle selection canvas.
@@ -38,20 +39,38 @@ Item {
     Canvas {
         id: dimCanvas
         anchors.fill: parent
+        opacity: 0
+
+        // Fade in animation (matches CaptureWindow original)
+        NumberAnimation on opacity {
+            from: 0; to: 1
+            duration: 200
+            running: true
+            easing.type: Easing.OutQuad
+        }
         
         onPaint: {
             var ctx = getContext("2d")
             ctx.reset()
             
-            // Full dim overlay
-            ctx.fillStyle = Qt.rgba(0, 0, 0, 0.35)
+            // Gradient dim overlay (matches original look)
+            // Top is darker (gradient + base dim), bottom is lighter (base dim only)
+            var grad = ctx.createLinearGradient(0, 0, 0, height);
+            grad.addColorStop(0.0, Qt.rgba(0, 0, 0, 0.65));
+            grad.addColorStop(1.0, Qt.rgba(0, 0, 0, 0.35));
+            
+            ctx.fillStyle = grad
             ctx.fillRect(0, 0, width, height)
             
             // Cut out the selection area
             if (root.isDrawing || root.hasSelection) {
                 ctx.globalCompositeOperation = "destination-out"
                 ctx.fillStyle = "white"
-                ctx.fillRect(root.selX, root.selY, root.selW, root.selH)
+                
+                // Use shared path logic to match border
+                root.drawSelectionPath(ctx, root.selX, root.selY, root.selW, root.selH)
+                
+                ctx.fill()
             }
         }
     }
@@ -64,61 +83,141 @@ Item {
         function onIsDrawingChanged() { dimCanvas.requestPaint() }
     }
     
-    // Selection rectangle border
-    Rectangle {
-        id: selectionBorder
-        visible: root.isDrawing || root.hasSelection
-        x: root.selX
-        y: root.selY
-        width: root.selW
-        height: root.selH
-        color: "transparent"
-        border.color: "white"
-        border.width: 2
+    // Shared path drawing logic for consistent rounded/sharp corners
+    function drawSelectionPath(ctx, x, y, w, h) {
+        // Dynamic radius: Max 24, but shrink if rect is too small to avoid artifacts
+        var r = Math.min(24, Math.min(w, h) / 2)
         
-        // Corner handles
-        Repeater {
-            model: [
-                { px: 0, py: 0 },
-                { px: 1, py: 0 },
-                { px: 0, py: 1 },
-                { px: 1, py: 1 }
-            ]
+        // Determine which corner matches the current mouse (endPoint)
+        // normalized relative to the rect
+        var tl = r, tr = r, br = r, bl = r
+        
+        // Logic: The corner corresponding to endPoint gets 0 radius
+        if (root.endPoint.x >= root.startPoint.x) {
+            // Mouse is to the right
+            if (root.endPoint.y >= root.startPoint.y) br = 0 // Bottom-Right
+            else tr = 0 // Top-Right
+        } else {
+            // Mouse is to the left
+            if (root.endPoint.y >= root.startPoint.y) bl = 0 // Bottom-Left
+            else tl = 0 // Top-Left
+        }
+        
+        ctx.beginPath()
+        
+        // Top edge
+        ctx.moveTo(x + tl, y)
+        ctx.lineTo(x + w - tr, y)
+        if (tr > 0) ctx.quadraticCurveTo(x + w, y, x + w, y + tr)
+        
+        // Right edge
+        ctx.lineTo(x + w, y + h - br)
+        if (br > 0) ctx.quadraticCurveTo(x + w, y + h, x + w - br, y + h)
+        
+        // Bottom edge
+        ctx.lineTo(x + bl, y + h)
+        if (bl > 0) ctx.quadraticCurveTo(x, y + h, x, y + h - bl)
+        
+        // Left edge
+        ctx.lineTo(x, y + tl)
+        if (tl > 0) ctx.quadraticCurveTo(x, y, x + tl, y)
+        
+        ctx.closePath()
+    }
+
+    Canvas {
+        id: selectionBorderCanvas
+        anchors.fill: parent
+        visible: root.isDrawing || root.hasSelection
+        
+        onPaint: {
+            var ctx = getContext("2d")
+            ctx.reset()
             
-            Rectangle {
-                width: 8
-                height: 8
-                radius: 4
-                color: "white"
-                x: modelData.px * selectionBorder.width - 4
-                y: modelData.py * selectionBorder.height - 4
+            ctx.lineWidth = 2
+            ctx.strokeStyle = "white"
+            
+            root.drawSelectionPath(ctx, root.selX, root.selY, root.selW, root.selH)
+            
+            ctx.stroke()
+        }
+        
+        Connections {
+            target: root
+            function onStartPointChanged() { selectionBorderCanvas.requestPaint() }
+            function onEndPointChanged() { selectionBorderCanvas.requestPaint() }
+            function onIsDrawingChanged() { selectionBorderCanvas.requestPaint() }
+        }
+    }
+    
+
+    
+    // Mask to clip the glow from the inside (keeps the selection 100% native)
+    Canvas {
+        id: glowMask
+        anchors.fill: parent
+        visible: false // Used as mask only
+        
+        onPaint: {
+            var ctx = getContext("2d")
+            ctx.reset()
+            
+            // Opaque outside
+            ctx.fillStyle = "black"
+            ctx.fillRect(0, 0, width, height)
+            
+            // Cut out inside (make transparent)
+            if (root.isDrawing || root.hasSelection) {
+                ctx.globalCompositeOperation = "destination-out"
+                ctx.fillStyle = "white"
+                root.drawSelectionPath(ctx, root.selX, root.selY, root.selW, root.selH)
+                ctx.fill()
             }
         }
-    }
-    
-    // Dimension label
-    Rectangle {
-        id: dimLabel
-        visible: (root.isDrawing || root.hasSelection) && root.selW > 10 && root.selH > 10
         
-        x: root.selX + root.selW / 2 - width / 2
-        y: root.selY + root.selH + 12
-        
-        width: dimText.width + 16
-        height: dimText.height + 8
-        radius: 4
-        color: Qt.rgba(0, 0, 0, 0.7)
-        
-        Text {
-            id: dimText
-            anchors.centerIn: parent
-            text: Math.round(root.selW) + " × " + Math.round(root.selH)
-            color: "white"
-            font.pixelSize: 11
-            font.bold: true
+        Connections {
+            target: root
+            function onStartPointChanged() { glowMask.requestPaint() }
+            function onEndPointChanged() { glowMask.requestPaint() }
+            function onIsDrawingChanged() { glowMask.requestPaint() }
         }
     }
-    
+
+    // Glow Container with Masking
+    Item {
+        id: glowWrapper
+        anchors.fill: parent
+        visible: selectionBorderCanvas.visible
+        
+        // Layer 1: Wide smoke (Boosted opacity)
+        Glow {
+            anchors.fill: selectionBorderCanvas
+            source: selectionBorderCanvas
+            radius: 64
+            samples: 64
+            color: Qt.rgba(1, 1, 1, 0.8) // Was 0.3, now 0.8 for visibility
+            spread: 0.0
+            transparentBorder: true
+        }
+
+        // Layer 2: Tight aura (Boosted opacity)
+        Glow {
+            anchors.fill: selectionBorderCanvas
+            source: selectionBorderCanvas
+            radius: 16
+            samples: 32
+            color: Qt.rgba(1, 1, 1, 0.9) // Was 0.4, now 0.9
+            spread: 0.1
+            transparentBorder: true
+        }
+        
+        // Clip the inside of the glow so it doesn't fog up the selection
+        layer.enabled: true
+        layer.effect: OpacityMask {
+            maskSource: glowMask
+        }
+    }
+
     // Mouse interaction
     MouseArea {
         id: mouseArea
