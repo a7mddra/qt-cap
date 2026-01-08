@@ -1,15 +1,13 @@
 // Copyright 2026 a7mddra
 // SPDX-License-Identifier: Apache-2.0
 
-use std::env;
-use std::io::{BufRead, BufReader};
-use std::path::PathBuf;
-use std::process::{Child, Command, ExitCode, Stdio};
+mod paths;
+mod qt_app;
 
-use anyhow::{Context, Result};
-use sys_display_hotplug::DisplayWatcher;
+use anyhow::Result;
+use std::process::ExitCode;
+use qt_app::QtApp;
 use sys_shutter_suppressor::AudioGuard;
-use sys_single_instance::InstanceLock;
 
 fn main() -> ExitCode {
     match run() {
@@ -23,151 +21,6 @@ fn main() -> ExitCode {
 }
 
 fn run() -> Result<ExitCode> {
-    let _lock = InstanceLock::try_acquire("qt-capture")
-        .context("Failed to acquire instance lock - is another capture running?")?;
-
-    AudioGuard::mute();
-
-    let args: Vec<String> = env::args().skip(1).collect();
-    let mut child = spawn_qt_child(&args)?;
-    let child_pid = child.id();
-
-    let watcher = DisplayWatcher::start(move || {
-        eprintln!("[qt-capture] Display topology changed! Killing Qt...");
-        kill_process(child_pid);
-    });
-
-    let exit_code = if let Some(stdout) = child.stdout.take() {
-        let reader = BufReader::new(stdout);
-        let mut capture_success = false;
-        let mut capture_path: Option<String> = None;
-
-        for line in reader.lines() {
-            match line {
-                Ok(msg) => {
-                    let trimmed = msg.trim();
-                    match trimmed {
-                        "REQ_MUTE" => {}
-                        "CAPTURE_SUCCESS" => {
-                            capture_success = true;
-                        }
-                        "CAPTURE_FAIL" => {
-                            capture_success = false;
-                            break;
-                        }
-                        _ => {
-                            if trimmed.starts_with('/') && capture_success {
-                                capture_path = Some(trimmed.to_string());
-                                break;
-                            } else {
-                                eprintln!("[Qt] {}", trimmed);
-                            }
-                        }
-                    }
-                }
-                Err(_) => break,
-            }
-        }
-
-        if let Some(path) = capture_path {
-            println!("{}", path);
-            ExitCode::from(0)
-        } else {
-            ExitCode::from(1)
-        }
-    } else {
-        ExitCode::from(1)
-    };
-
-    watcher.stop();
-    let _ = child.wait();
-    AudioGuard::unmute();
-
-    Ok(exit_code)
-}
-
-fn spawn_qt_child(args: &[String]) -> Result<Child> {
-    let exe_path = env::current_exe()?;
-    let exe_dir = exe_path.parent().context("No parent dir for executable")?;
-
-    let (qt_bin, qt_runtime_dir) = find_qt_paths(exe_dir)?;
-
-    let mut cmd = Command::new(&qt_bin);
-    cmd.args(args)
-        .stdout(Stdio::piped())
-        .stderr(Stdio::inherit());
-
-    #[cfg(target_os = "linux")]
-    {
-        let libs_path = qt_runtime_dir.join("libs");
-        let plugins_path = qt_runtime_dir.join("plugins");
-        let qml_path = qt_runtime_dir.join("qml");
-
-        let mut ld_path = libs_path.to_string_lossy().to_string();
-        if let Ok(existing) = env::var("LD_LIBRARY_PATH") {
-            ld_path = format!("{}:{}", ld_path, existing);
-        }
-
-        cmd.env("LD_LIBRARY_PATH", ld_path)
-            .env("QT_PLUGIN_PATH", &plugins_path)
-            .env("QML2_IMPORT_PATH", &qml_path)
-            .env(
-                "QT_QPA_PLATFORM_PLUGIN_PATH",
-                plugins_path.join("platforms"),
-            );
-    }
-
-    cmd.spawn().context("Failed to spawn Qt binary")
-}
-
-fn find_qt_paths(exe_dir: &std::path::Path) -> Result<(PathBuf, PathBuf)> {
-    let qt_runtime = exe_dir.join("qt-runtime");
-
-    #[cfg(target_os = "macos")]
-    {
-        let qt_bin = qt_runtime.join("capture.app/Contents/MacOS/capture");
-        if qt_bin.exists() {
-            return Ok((qt_bin, qt_runtime));
-        }
-    }
-
-    #[cfg(target_os = "linux")]
-    {
-        let wrapper = qt_runtime.join("capture");
-        if wrapper.exists() {
-            return Ok((wrapper, qt_runtime));
-        }
-        let qt_bin = qt_runtime.join("bin/capture-bin");
-        if qt_bin.exists() {
-            return Ok((qt_bin, qt_runtime));
-        }
-    }
-
-    #[cfg(target_os = "windows")]
-    {
-        let qt_bin = qt_runtime.join("capture.exe");
-        if qt_bin.exists() {
-            return Ok((qt_bin, qt_runtime));
-        }
-    }
-
-    anyhow::bail!(
-        "Qt binary not found. Expected qt-runtime directory at {:?}",
-        qt_runtime
-    )
-}
-
-fn kill_process(pid: u32) {
-    #[cfg(unix)]
-    {
-        use std::process::Command;
-        let _ = Command::new("kill").arg("-9").arg(pid.to_string()).output();
-    }
-    #[cfg(windows)]
-    {
-        use std::process::Command;
-        let _ = Command::new("taskkill")
-            .args(["/F", "/PID", &pid.to_string()])
-            .output();
-    }
+    let mut app = QtApp::new();
+    app.run()
 }

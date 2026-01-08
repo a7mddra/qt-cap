@@ -37,7 +37,7 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /var/lib/apt/lists/*
 
 RUN pip3 install aqtinstall && \
-    aqt install-qt linux desktop 6.6.0 gcc_64 --outputdir /opt/qt -m qt5compat qtimageformats
+    aqt install-qt linux desktop 6.6.0 gcc_64 --outputdir /opt/qt -m qt5compat qtimageformats qtshadertools
 
 ENV PATH="/opt/qt/6.6.0/gcc_64/bin:${PATH}"
 ENV Qt6_DIR="/opt/qt/6.6.0/gcc_64"
