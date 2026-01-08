@@ -110,6 +110,7 @@ impl DisplayMonitor {
                 return count as i32;
             }
         }
+        1
     }
 
     
