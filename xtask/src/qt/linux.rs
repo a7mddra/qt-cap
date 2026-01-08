@@ -333,6 +333,8 @@ fn bundle_misc_libraries(libs_dir: &Path, qt_lib_path: &Path) -> Result<()> {
     let extra_libs = [
         "libQt6Qml.so.6",
         "libQt6QmlWorkerScript.so.6",
+        "libQt6Core5Compat.so.6",
+        "libQt6ShaderTools.so.6",
     ];
 
     for lib_namesake in extra_libs {

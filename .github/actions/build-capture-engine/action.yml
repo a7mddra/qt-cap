@@ -32,7 +32,7 @@ runs:
         host: "windows"
         target: "desktop"
         arch: "win64_msvc2019_64"
-        cached: true
+        modules: "qt5compat qtimageformats"
 
     - name: Setup MSVC (Windows)
       if: runner.os == 'Windows'

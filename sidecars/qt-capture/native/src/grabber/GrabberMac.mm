@@ -10,8 +10,7 @@
 #include <QPixmap>
 #include <QDebug>
 #include <QOperatingSystemVersion>
-#include <QMessageBox>
-#include <QPushButton>
+
 
 #import <CoreGraphics/CoreGraphics.h>
 #import <AppKit/AppKit.h>
@@ -28,21 +27,20 @@ public:
             if (!CGPreflightScreenCaptureAccess()) {
                 CGRequestScreenCaptureAccess();
 
-                QMessageBox msgBox;
-                msgBox.setIcon(QMessageBox::Information);
-                msgBox.setWindowTitle(tr("Screen Recording Permission"));
-                msgBox.setText(tr("Engine requires screen recording permission to take screenshots."));
-                msgBox.setInformativeText(tr("Please grant permission in System Settings. The application will close after."));
-                
-                QPushButton *openSettingsButton = msgBox.addButton(tr("Open System Settings"), QMessageBox::ActionRole);
-                msgBox.setStandardButtons(QMessageBox::Cancel);
-                msgBox.setDefaultButton(openSettingsButton);
+                NSAlert *alert = [[NSAlert alloc] init];
+                [alert setMessageText: @"Screen Recording Permission"];
+                [alert setInformativeText: @"Engine requires screen recording permission to take screenshots.\nPlease grant permission in System Settings. The application will close after."];
+                [alert addButtonWithTitle: @"Open System Settings"];
+                [alert addButtonWithTitle: @"Cancel"];
+                [alert setAlertStyle: NSAlertStyleInformational];
 
-                msgBox.exec();
+                NSInteger response = [alert runModal];
 
-                if (msgBox.clickedButton() == openSettingsButton) {
+                if (response == NSAlertFirstButtonReturn) {
                     [[NSWorkspace sharedWorkspace] openURL:[NSURL URLWithString:@"x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenRecording"]];
                 }
+
+                return frames;
 
                 return frames;
             }
