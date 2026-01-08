@@ -221,9 +221,10 @@ fn create_distribution(
 
     if check_command_exists("patchelf") {
         println!("  Setting RPATH with patchelf...");
-        let _ = Command::new("patchelf")
-            .args(["--set-rpath", "$ORIGIN/../libs", bin_dst.to_str().unwrap()])
-            .status();
+        patch_rpath_recursive(&bin_dir, "lib", &libs_dir)?;
+        patch_rpath_recursive(&libs_dir, "lib", &libs_dir)?;
+        patch_rpath_recursive(&plugins_dir, "plugin", &libs_dir)?;
+        patch_rpath_recursive(&qml_dir, "qml", &libs_dir)?;
     } else {
         println!("  Warning: patchelf not found. RPATH not set.");
     }
@@ -438,6 +439,52 @@ exec "$DIR/bin/capture-bin" "$@"
         fs::set_permissions(&script_path, fs::Permissions::from_mode(0o755))?;
     }
 
+    Ok(())
+}
+
+fn patch_rpath_recursive(root: &Path, _type_hint: &str, libs_dir: &Path) -> Result<()> {
+    if !root.exists() {
+        return Ok(());
+    }
+
+    // Iterate over all files
+    for entry in walkdir::WalkDir::new(root) {
+        let entry = entry?;
+        let path = entry.path();
+        
+        if !path.is_file() {
+            continue;
+        }
+
+        // Check if it's an ELF file or .so
+        let name = path.file_name().unwrap_or_default().to_string_lossy();
+        let is_so = name.ends_with(".so") || name.contains(".so.");
+        let is_bin = path.parent().map(|p| p.ends_with("bin")).unwrap_or(false);
+
+        if is_so || is_bin {
+            // Calculate relative path from this file's directory to libs_dir
+            let file_dir = path.parent().unwrap();
+            
+            // We need to find the path from file_dir to libs_dir
+            // For example:
+            // file_dir = dist/qml/QtQuick
+            // libs_dir = dist/libs
+            // relative = ../../libs
+            
+            let relative_to_libs = pathdiff::diff_paths(libs_dir, file_dir);
+
+            if let Some(rel) = relative_to_libs {
+                let origin_path = format!("$ORIGIN/{}", rel.display());
+                
+                // Run patchelf
+                let _ = Command::new("patchelf")
+                    .arg("--set-rpath")
+                    .arg(&origin_path)
+                    .arg(path)
+                    .output();
+            }
+        }
+    }
     Ok(())
 }
 
