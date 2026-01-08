@@ -294,7 +294,6 @@ fn resolve_libraries_recursive(
         "libdrm",
         "libglapi",
         "libstdc++",
-        "libxcb",
         "libgcc_s",
         "libglib",
         "libpcre",
@@ -348,6 +347,11 @@ fn bundle_misc_libraries(libs_dir: &Path, qt_lib_path: &Path) -> Result<()> {
         "libQt6QmlWorkerScript.so.6",
         "libQt6Core5Compat.so.6",
         "libQt6ShaderTools.so.6",
+        "libQt6XcbQpa.so.6",
+        "libQt6OpenGL.so.6",
+        "libQt6WaylandClient.so.6",
+        "libQt6WaylandCompositor.so.6",
+        "libQt6WlShellIntegration.so.6",
     ];
 
     for lib_namesake in extra_libs {
@@ -375,7 +379,6 @@ fn bundle_misc_libraries(libs_dir: &Path, qt_lib_path: &Path) -> Result<()> {
 }
 
 fn bundle_xcb_libraries(libs_dir: &Path) -> Result<()> {
-    return Ok(());
     let xcb_dirs = [
         "/usr/lib/x86_64-linux-gnu",
         "/usr/lib64",
