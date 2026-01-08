@@ -217,20 +217,18 @@ fn create_distribution(
 
     bundle_misc_libraries(&libs_dir, &qt_lib_path)?;
 
-    // FIX: Do NOT bundle system-level XCB libraries. 
-    // They must match the host system (kernel/driver), not the build environment.
+    // FIX 1: Disabled bundling of system-level HAL libraries (libxcb, libwayland, etc.)
+    // These must come from the user's OS to match the kernel/drivers.
     // bundle_xcb_libraries(&libs_dir)?;
 
     if check_command_exists("patchelf") {
         println!("  Setting RPATH with patchelf...");
-        // It is safe to patch the binary and the shared libs
         patch_rpath_recursive(&bin_dir, "lib", &libs_dir)?;
         patch_rpath_recursive(&libs_dir, "lib", &libs_dir)?;
         
-        // FIX: Do NOT run patchelf on Qt Plugins or QML files.
-        // Old versions of patchelf (common in Ubuntu 20.04) corrupt the .qtmetadata section,
-        // causing "metadata not found" and "not a plugin" errors.
-        // The runner script already sets LD_LIBRARY_PATH, so RPATH is not strictly needed for plugins.
+        // FIX 2: Disabled patchelf on plugins.
+        // Patchelf corrupts the .qtmetadata section in plugins, causing "metadata not found".
+        // The wrapper script sets LD_LIBRARY_PATH, which is sufficient.
         
         // patch_rpath_recursive(&plugins_dir, "plugin", &libs_dir)?;
         // patch_rpath_recursive(&qml_dir, "qml", &libs_dir)?;
@@ -287,7 +285,7 @@ fn resolve_libraries_recursive(
 
     let stdout = String::from_utf8_lossy(&output.stdout);
 
-    // FIX: Enhanced skip list to prevent bundling HAL/System libraries
+    // FIX 3: Expanded blacklist to ignore system libs that crash if bundled.
     let skip_libs = [
         "linux-vdso",
         "libgcc_s",
@@ -308,7 +306,6 @@ fn resolve_libraries_recursive(
         "libglib",
         "libpcre",
         "libz",
-        // System libraries that should ALWAYS come from the host OS:
         "libxcb", 
         "libX11",
         "libXext",
@@ -363,14 +360,14 @@ fn resolve_libraries_recursive(
 }
 
 fn bundle_misc_libraries(libs_dir: &Path, qt_lib_path: &Path) -> Result<()> {
-    // We explicitly list the full filenames we NEED.
-    // We include both the versioned .so.6 and the .so symlink to be safe.
+    // FIX 4: Explicitly force these libraries to be bundled.
+    // This fixes the crash where "Squiggle" visuals fail due to missing ShaderTools.
     let critical_libs = [
         "libQt6Qml.so.6",
         "libQt6QmlWorkerScript.so.6",
         "libQt6Core5Compat.so.6",
-        "libQt6ShaderTools.so.6",  // <--- The one causing your crash
-        "libQt6Svg.so.6",          // <--- Often needed for icons
+        "libQt6ShaderTools.so.6", // <--- THE CRITICAL MISSING LIBRARY
+        "libQt6Svg.so.6",
         "libQt6OpenGL.so.6",
         "libQt6WaylandClient.so.6",
         "libQt6WaylandCompositor.so.6",
@@ -390,8 +387,8 @@ fn bundle_misc_libraries(libs_dir: &Path, qt_lib_path: &Path) -> Result<()> {
                 println!("    + {}", lib_name);
             }
         } else {
-            // Try finding it with wildcards if the exact version match fails
-            // (e.g. libQt6ShaderTools.so.6.6.0)
+            // FIX 5: Fixed Borrow Checker Error here.
+            // Using &name to borrow instead of move.
             let mut found = false;
             if let Ok(entries) = fs::read_dir(qt_lib_path) {
                 for entry in entries.flatten() {
@@ -400,8 +397,7 @@ fn bundle_misc_libraries(libs_dir: &Path, qt_lib_path: &Path) -> Result<()> {
                     
                     if name_str.starts_with(lib_name) {
                         let real_src = entry.path();
-                        // FIXED: Pass `&name` to join to borrow it, so we can use `name_str` below
-                        let real_dst = libs_dir.join(&name); 
+                        let real_dst = libs_dir.join(&name); // <--- Fixed line
                         if !real_dst.exists() {
                             fs::copy(&real_src, &real_dst)?;
                             println!("    + {} (found as {})", lib_name, name_str);
@@ -412,122 +408,6 @@ fn bundle_misc_libraries(libs_dir: &Path, qt_lib_path: &Path) -> Result<()> {
             }
             if !found {
                 println!("    ! Warning: Could not find critical lib: {}", lib_name);
-            }
-        }
-    }
-    Ok(())
-}
-
-// NOTE: This function is kept for reference but not called in create_distribution.
-// Bundling these libraries from a Docker container (Ubuntu 20.04) and running on
-// a newer host (Fedora/Arch/Ubuntu 24.04) causes severe ABI conflicts.
-fn bundle_xcb_libraries(libs_dir: &Path) -> Result<()> {
-    let xcb_dirs = [
-        "/usr/lib/x86_64-linux-gnu",
-        "/usr/lib64",
-        "/lib/x86_64-linux-gnu",
-    ];
-
-    let xcb_libs = [
-        "libxcb-cursor.so.0",
-        "libxcb-icccm.so.4",
-        "libxcb-image.so.0",
-        "libxcb-keysyms.so.1",
-        "libxcb-randr.so.0",
-        "libxcb-render-util.so.0",
-        "libxcb-shm.so.0",
-        "libxcb-sync.so.1",
-        "libxcb-xinerama.so.0",
-        "libxcb-xkb.so.1",
-        "libxkbcommon-x11.so.0",
-        "libxkbcommon.so.0",
-        "libxcb-glx.so.0",
-    ];
-
-    let xcb_dir = xcb_dirs.iter().find(|dir| Path::new(dir).exists());
-
-    if let Some(dir) = xcb_dir {
-        let xcb_path = Path::new(dir);
-        for lib in xcb_libs {
-            let src = xcb_path.join(lib);
-            let dst = libs_dir.join(lib);
-
-            if src.exists() && !dst.exists() {
-                if let Ok(real_path) = fs::canonicalize(&src) {
-                    fs::copy(&real_path, &dst)?;
-                } else {
-                    fs::copy(&src, &dst)?;
-                }
-            }
-        }
-    }
-
-    Ok(())
-}
-
-fn create_runner_script(dist_dir: &Path) -> Result<()> {
-    let script = r#"#!/bin/bash
-DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
-export LD_LIBRARY_PATH="$DIR/libs:$DIR/lib:$LD_LIBRARY_PATH"
-export QT_PLUGIN_PATH="$DIR/plugins"
-export QT_QPA_PLATFORM_PLUGIN_PATH="$DIR/plugins/platforms"
-export QML2_IMPORT_PATH="$DIR/qml"
-
-exec "$DIR/bin/capture-bin" "$@"
-"#;
-
-    let script_path = dist_dir.join("capture");
-    fs::write(&script_path, script)?;
-
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        fs::set_permissions(&script_path, fs::Permissions::from_mode(0o755))?;
-    }
-
-    Ok(())
-}
-
-fn patch_rpath_recursive(root: &Path, _type_hint: &str, libs_dir: &Path) -> Result<()> {
-    if !root.exists() {
-        return Ok(());
-    }
-
-    // Iterate over all files
-    for entry in walkdir::WalkDir::new(root) {
-        let entry = entry?;
-        let path = entry.path();
-        
-        if !path.is_file() {
-            continue;
-        }
-
-        // Check if it's an ELF file or .so
-        let name = path.file_name().unwrap_or_default().to_string_lossy();
-        let is_so = name.ends_with(".so") || name.contains(".so.");
-        let is_bin = path.parent().map(|p| p.ends_with("bin")).unwrap_or(false);
-
-        if is_so || is_bin {
-            // Calculate relative path from this file's directory to libs_dir
-            let file_dir = path.parent().unwrap();
-            
-            // We need to find the path from file_dir to libs_dir
-            // For example:
-            // file_dir = dist/qml/QtQuick
-            // libs_dir = dist/libs
-            // relative = ../../libs
-            
-            let relative_to_libs = pathdiff::diff_paths(libs_dir, file_dir);
-
-            if let Some(rel) = relative_to_libs {
-                let origin_path = format!("$ORIGIN/{}", rel.display());
-                
-                // Run patchelf
-                let _ = Command::new("patchelf")
-                    .arg("--set-rpath")
-                    .arg(&origin_path)
-                    .arg(path)
-                    .output();
             }
         }
     }
