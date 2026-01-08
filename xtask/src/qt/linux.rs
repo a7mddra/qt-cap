@@ -3,31 +3,18 @@
 
 //! Linux Qt deployment.
 //!
-//! Builds Qt project with CMake and creates portable distribution
-//! with all required libraries and plugins.
+//! Builds Qt project with CMake and bundles it using linuxdeployqt.
+//! No more manual dependency resolution!
 
 use anyhow::{Context, Result};
-use std::collections::HashSet;
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::process::Command;
-
-use crate::utils::copy_dir_all;
 
 pub fn build(native_dir: &Path) -> Result<()> {
     let build_dir = native_dir.join("build");
-    let dist_dir = native_dir.join("dist");
-
-    let qmake = find_qmake()?;
-    let qt_prefix = get_qt_prefix(&qmake)?;
-    let qt_plugins = get_qt_plugins(&qmake)?;
-
-    println!("  Qt Prefix: {}", qt_prefix);
-    println!("  Qt Plugins: {}", qt_plugins);
     
-    let qt_qml = get_qt_qml(&qmake)?;
-    println!("  Qt QML: {}", qt_qml);
-
+    // 1. Configure CMake
     println!("  Configuring CMake...");
     fs::create_dir_all(&build_dir)?;
 
@@ -38,7 +25,7 @@ pub fn build(native_dir: &Path) -> Result<()> {
             "-B",
             build_dir.to_str().unwrap(),
             "-DCMAKE_BUILD_TYPE=Release",
-            &format!("-DCMAKE_PREFIX_PATH={}", qt_prefix),
+            // We rely on the environment variables (Qt6_DIR) set in Docker
         ])
         .status()
         .context("Failed to run cmake configure")?;
@@ -47,6 +34,7 @@ pub fn build(native_dir: &Path) -> Result<()> {
         anyhow::bail!("CMake configure failed");
     }
 
+    // 2. Build
     println!("  Building...");
     let status = Command::new("cmake")
         .args([
@@ -63,454 +51,114 @@ pub fn build(native_dir: &Path) -> Result<()> {
         anyhow::bail!("CMake build failed");
     }
 
-    println!("  Creating distribution...");
-    create_distribution(native_dir, &build_dir, &dist_dir, &qt_plugins, &qt_qml, &qt_prefix)?;
+    Ok(())
+}
+
+pub fn deploy(native_dir: &Path) -> Result<()> {
+    let build_dir = native_dir.join("build");
+    let runtime_dir = native_dir.join("qt-runtime");
+
+    println!("  Creating 'qt-runtime' distribution using linuxdeployqt...");
+    create_runtime_distribution(native_dir, &build_dir, &runtime_dir)?;
 
     Ok(())
 }
 
-fn find_qmake() -> Result<String> {
-    for cmd in ["qmake6", "qmake"] {
-        if let Ok(output) = Command::new("which").arg(cmd).output() {
-            if output.status.success() {
-                return Ok(cmd.to_string());
-            }
-        }
-    }
-    anyhow::bail!("qmake not found. Please install Qt6 development packages.")
-}
-
-fn get_qt_prefix(qmake: &str) -> Result<String> {
-    let output = Command::new(qmake)
-        .args(["-query", "QT_INSTALL_PREFIX"])
-        .output()
-        .context("Failed to query Qt prefix")?;
-
-    Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
-}
-
-fn get_qt_plugins(qmake: &str) -> Result<String> {
-    let output = Command::new(qmake)
-        .args(["-query", "QT_INSTALL_PLUGINS"])
-        .output()
-        .context("Failed to query Qt plugins")?;
-
-    Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
-}
-
-fn get_qt_qml(qmake: &str) -> Result<String> {
-    let output = Command::new(qmake)
-        .args(["-query", "QT_INSTALL_QML"])
-        .output()
-        .context("Failed to query Qt QML path")?;
-
-    Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
-}
-
-fn create_distribution(
+fn create_runtime_distribution(
     _native_dir: &Path,
     build_dir: &Path,
-    dist_dir: &Path,
-    qt_plugins: &str,
-    qt_qml: &str,
-    qt_prefix: &str,
+    runtime_dir: &Path,
 ) -> Result<()> {
-    if dist_dir.exists() {
-        fs::remove_dir_all(dist_dir)?;
+    // Clean up previous build
+    if runtime_dir.exists() {
+        fs::remove_dir_all(runtime_dir)?;
     }
 
-    let bin_dir = dist_dir.join("bin");
-    let libs_dir = dist_dir.join("libs");
-    let plugins_dir = dist_dir.join("plugins");
-    let qml_dir = dist_dir.join("qml");
-    let fonts_dir = dist_dir.join("fonts");
-
+    // Create the structure linuxdeployqt expects: <AppDir>/usr/bin/
+    let bin_dir = runtime_dir.join("usr/bin");
     fs::create_dir_all(&bin_dir)?;
-    fs::create_dir_all(&libs_dir)?;
-    fs::create_dir_all(&plugins_dir)?;
-    fs::create_dir_all(&qml_dir)?;
-    fs::create_dir_all(&fonts_dir)?;
 
-    let bin_src = build_dir.join("capture-bin");
-    let bin_dst = bin_dir.join("capture-bin");
+    // Locate the built binary
+    // Note: CMake lists OUTPUT_NAME as "capture-bin"
+    let src_bin = build_dir.join("capture-bin");
+    let dst_bin = bin_dir.join("capture-bin");
 
-    let bin_src = if !bin_src.exists() {
-        build_dir.join("capture")
-    } else {
-        bin_src
-    };
-
-    if !bin_src.exists() {
-        anyhow::bail!("Compiled binary not found at {}", bin_src.display());
+    if !src_bin.exists() {
+        anyhow::bail!("Compiled binary not found at {}", src_bin.display());
     }
 
-    fs::copy(&bin_src, &bin_dst)?;
+    // Copy binary to dist/usr/bin/
+    fs::copy(&src_bin, &dst_bin)?;
 
+    // Make it executable
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
-        fs::set_permissions(&bin_dst, fs::Permissions::from_mode(0o755))?;
+        fs::set_permissions(&dst_bin, fs::Permissions::from_mode(0o755))?;
     }
 
-    let plugin_dirs = [
-        "platforms",
-        "imageformats",
-        "xcbglintegrations",
-        "platformthemes",
-        "wayland-decoration-client",
-        "wayland-graphics-integration-client",
-        "wayland-shell-integration",
-    ];
-    let qt_plugins_path = Path::new(qt_plugins);
+    // RUN THE MAGIC TOOL
+    // -bundle-non-qt-libs: includes SSL, etc.
+    // -always-overwrite: Good for repeated local builds
+    // -verbose=2: Helpful for CI debugging
+    // -unsupported-allow-new-glibc: BYPASS safety check for Ubuntu 24.04+ (dev machines)
+    // -qmake: Explicitly set qmake path to avoid using system default which might be Qt5 or broken
+    let qmake_path = resolve_qmake_path();
+    println!("  Using qmake: {}", qmake_path);
 
-    for plugin_dir in plugin_dirs {
-        let src = qt_plugins_path.join(plugin_dir);
-        let dst = plugins_dir.join(plugin_dir);
-        if src.exists() {
-            copy_dir_all(&src, &dst)?;
-        } else {
-            println!("  Warning: Plugin category '{}' not found.", plugin_dir);
-        }
+    // QML Source Directory
+    let qmldir = _native_dir.join("qml");
+    if !qmldir.exists() {
+         anyhow::bail!("QML source directory not found at {}", qmldir.display());
     }
 
-    let qml_modules = ["QtQuick", "Qt5Compat", "QtQml"];
-    let qt_qml_path = Path::new(qt_qml);
-
-    for module in qml_modules {
-        let src = qt_qml_path.join(module);
-        let dst = qml_dir.join(module);
-        if src.exists() {
-            copy_dir_all(&src, &dst)?;
-        } else {
-            println!("  Warning: QML module '{}' not found at {}", module, src.display());
-        }
-    }
-    
-    // Copy root QML files (builtins.qmltypes, etc.)
-    if let Ok(entries) = fs::read_dir(qt_qml_path) {
-        for entry in entries.flatten() {
-            let path = entry.path();
-            if path.is_file() {
-                if let Some(name) = path.file_name() {
-                    fs::copy(&path, qml_dir.join(name))?;
-                }
-            }
-        }
-    }
-
-    let qt_lib_path = Path::new(qt_prefix).join("lib");
-    let qt_lib_str = qt_lib_path.to_string_lossy().to_string();
-
-    let mut visited = HashSet::new();
-    println!("  Resolving dependencies (search path: {})...", qt_lib_str);
-    resolve_libraries_recursive(&bin_dst, &libs_dir, &mut visited, &qt_lib_str)?;
-
-    let all_plugins = find_all_files(&plugins_dir)?;
-    for plugin in all_plugins {
-        resolve_libraries_recursive(&plugin, &libs_dir, &mut visited, &qt_lib_str)?;
-    }
-    
-    let all_qml_plugins = find_all_files(&qml_dir)?;
-    for plugin in all_qml_plugins {
-        resolve_libraries_recursive(&plugin, &libs_dir, &mut visited, &qt_lib_str)?;
-    }
-
-    bundle_misc_libraries(&libs_dir, &qt_lib_path)?;
-
-    // Create SONAME symlinks (e.g., libQt6Core.so.6 -> libQt6Core.so.6.x.x)
-    create_soname_symlinks(&libs_dir)?;
-
-    if check_command_exists("patchelf") {
-        println!("  Setting RPATH with patchelf...");
-        patch_rpath_recursive(&bin_dir, &libs_dir)?;
-        patch_rpath_recursive(&libs_dir, &libs_dir)?;
-        patch_rpath_recursive(&plugins_dir, &libs_dir)?;
-        patch_rpath_recursive(&qml_dir, &libs_dir)?;
-    } else {
-        println!("  Warning: patchelf not found. RPATH not set.");
-    }
-
-    let sys_fonts_conf = Path::new("/etc/fonts/fonts.conf");
-    if sys_fonts_conf.exists() {
-        fs::copy(sys_fonts_conf, fonts_dir.join("fonts.conf"))?;
-    }
-
-    create_runner_script(dist_dir)?;
-
-    // qt.conf must be next to the executable in bin/
-    fs::write(
-        bin_dir.join("qt.conf"),
-        "[Paths]\nPrefix = ..\nPlugins = plugins\nQml2Imports = qml\n",
-    )?;
-
-    Ok(())
-}
-
-fn find_all_files(dir: &Path) -> Result<Vec<PathBuf>> {
-    let mut files = Vec::new();
-    if dir.is_dir() {
-        for entry in fs::read_dir(dir)? {
-            let entry = entry?;
-            let path = entry.path();
-            if path.is_dir() {
-                files.extend(find_all_files(&path)?);
-            } else {
-                if let Some(ext) = path.extension() {
-                    if ext == "so" {
-                        files.push(path);
-                    }
-                }
-            }
-        }
-    }
-    Ok(files)
-}
-
-fn resolve_libraries_recursive(
-    binary: &Path,
-    libs_dir: &Path,
-    visited: &mut HashSet<PathBuf>,
-    qt_lib_path: &str,
-) -> Result<()> {
-    let output = Command::new("ldd")
-        .arg(binary)
-        .env("LD_LIBRARY_PATH", qt_lib_path)
-        .output()
-        .context("Failed to run ldd")?;
-
-    let stdout = String::from_utf8_lossy(&output.stdout);
-
-    let skip_libs = [
-        "linux-vdso",
-        "libgcc_s",
-        "libc.so",
-        "libm.so",
-        "ld-linux",
-        "libpthread",
-        "librt",
-        "libdl",
-        "libGL",
-        "libEGL",
-        "libGLX",
-        "libOpenGL",
-        "libdrm",
-        "libglapi",
-        "libstdc++",
-        "libgcc_s",
-        "libglib",
-        "libpcre",
-        "libz",
-        "libxcb", 
-        "libX11",
-        "libXext",
-        "libXau",
-        "libXdmcp",
-        "libxkbcommon",
-        "libwayland",
-        "libffi",
-        "libexpat",
-        "libdbus",
-    ];
-
-    for line in stdout.lines() {
-        if let Some(arrow_pos) = line.find("=>") {
-            let after_arrow = &line[arrow_pos + 2..].trim();
-            if let Some(path_end) = after_arrow.find(" (") {
-                let lib_path_str = &after_arrow[..path_end].trim();
-                let lib_path = Path::new(lib_path_str);
-
-                if !lib_path.exists() {
-                    continue;
-                }
-
-                let lib_name = lib_path.file_name().unwrap().to_str().unwrap();
-
-                let mut skip = false;
-                for s in skip_libs {
-                    if lib_name.contains(s) {
-                        skip = true;
-                        break;
-                    }
-                }
-                if skip {
-                    continue;
-                }
-
-                if !visited.contains(lib_path) {
-                    visited.insert(lib_path.to_path_buf());
-
-                    let dst = libs_dir.join(lib_name);
-                    if !dst.exists() {
-                        fs::copy(lib_path, &dst)?;
-                    }
-
-                    resolve_libraries_recursive(lib_path, libs_dir, visited, qt_lib_path)?;
-                }
-            }
-        }
-    }
-
-    Ok(())
-}
-
-fn bundle_misc_libraries(libs_dir: &Path, qt_lib_path: &Path) -> Result<()> {
-    let critical_libs = [
-        "libQt6Qml.so.6",
-        "libQt6QmlWorkerScript.so.6",
-        "libQt6Core5Compat.so.6",
-        "libQt6ShaderTools.so.6", 
-        "libQt6Svg.so.6",
-        "libQt6OpenGL.so.6",
-        "libQt6WaylandClient.so.6",
-        "libQt6WaylandCompositor.so.6",
-        "libQt6WlShellIntegration.so.6",
-        "libQt6XcbQpa.so.6",
-    ];
-
-    println!("  Bundling critical Qt libraries...");
-
-    for lib_name in critical_libs {
-        let src_path = qt_lib_path.join(lib_name);
-        let dst_path = libs_dir.join(lib_name);
-
-        if src_path.exists() {
-            if !dst_path.exists() {
-                fs::copy(&src_path, &dst_path)?;
-                println!("    + {}", lib_name);
-            }
-        } else {
-            let mut found = false;
-            if let Ok(entries) = fs::read_dir(qt_lib_path) {
-                for entry in entries.flatten() {
-                    let name = entry.file_name();
-                    let name_str = name.to_string_lossy();
-                    
-                    if name_str.starts_with(lib_name) {
-                        let real_src = entry.path();
-                        let real_dst = libs_dir.join(&name);
-                        if !real_dst.exists() {
-                            fs::copy(&real_src, &real_dst)?;
-                            println!("    + {} (found as {})", lib_name, name_str);
-                        }
-                        found = true;
-                    }
-                }
-            }
-            if !found {
-                println!("    ! Warning: Could not find critical lib: {}", lib_name);
-            }
-        }
-    }
-    Ok(())
-}
-
-fn create_runner_script(dist_dir: &Path) -> Result<()> {
-    let script = r#"#!/bin/bash
-DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
-export LD_LIBRARY_PATH="$DIR/libs:$DIR/lib:$LD_LIBRARY_PATH"
-export QT_PLUGIN_PATH="$DIR/plugins"
-export QT_QPA_PLATFORM_PLUGIN_PATH="$DIR/plugins/platforms"
-export QML2_IMPORT_PATH="$DIR/qml"
-
-exec "$DIR/bin/capture-bin" "$@"
-"#;
-
-    let script_path = dist_dir.join("capture");
-    fs::write(&script_path, script)?;
-
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        fs::set_permissions(&script_path, fs::Permissions::from_mode(0o755))?;
-    }
-
-    Ok(())
-}
-
-fn patch_rpath_recursive(root: &Path, libs_dir: &Path) -> Result<()> {
-    if !root.exists() {
-        return Ok(());
-    }
-
-    for entry in walkdir::WalkDir::new(root) {
-        let entry = entry?;
-        let path = entry.path();
-
-        if !path.is_file() {
-            continue;
-        }
-
-        let name = path.file_name().unwrap_or_default().to_string_lossy();
-        let is_so = name.ends_with(".so") || name.contains(".so.");
-        let is_bin = path.parent().map(|p| p.ends_with("bin")).unwrap_or(false);
-
-        if is_so || is_bin {
-            let file_dir = path.parent().unwrap();
-            let relative_to_libs = pathdiff::diff_paths(libs_dir, file_dir);
-
-            if let Some(rel) = relative_to_libs {
-                let origin_path = format!("$ORIGIN/{}", rel.display());
-                // Set RPATH
-                let _ = Command::new("patchelf")
-                    .arg("--set-rpath")
-                    .arg(&origin_path)
-                    .arg(path)
-                    .output();
-                // Force RPATH instead of RUNPATH (RPATH takes precedence)
-                let _ = Command::new("patchelf")
-                    .arg("--force-rpath")
-                    .arg(path)
-                    .output();
-            }
-        }
-    }
-    Ok(())
-}
-
-fn create_soname_symlinks(libs_dir: &Path) -> Result<()> {
-    println!("  Creating SONAME copies...");
-    let mut created = 0;
-
-    // Collect files first to avoid modifying while iterating
-    let files: Vec<_> = fs::read_dir(libs_dir)?
-        .flatten()
-        .filter(|e| e.path().is_file())
-        .collect();
-
-    for entry in files {
-        let path = entry.path();
-        if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
-            // Match patterns like libQt6Core.so.6.6.0 or libQt6Core.so.6.8.0
-            if name.starts_with("libQt6") && name.contains(".so.") {
-                // Extract SONAME (e.g., libQt6Core.so.6 from libQt6Core.so.6.6.0)
-                if let Some(pos) = name.find(".so.") {
-                    let after_so = &name[pos + 4..]; // e.g., "6.6.0"
-                    if let Some(dot_pos) = after_so.find('.') {
-                        let major = &after_so[..dot_pos]; // e.g., "6"
-                        let soname = format!("{}.so.{}", &name[..pos], major);
-                        let soname_path = libs_dir.join(&soname);
-
-                        // Copy instead of symlink (symlinks don't survive zip)
-                        if !soname_path.exists() {
-                            if fs::copy(&path, &soname_path).is_ok() {
-                                created += 1;
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    println!("    Created {} SONAME copies", created);
-    Ok(())
-}
-
-fn check_command_exists(cmd: &str) -> bool {
-    Command::new("which")
-        .arg(cmd)
-        .stdout(std::process::Stdio::null())
+    let status = Command::new("linuxdeployqt")
+        .arg(&dst_bin)
+        .args([
+            "-bundle-non-qt-libs", 
+            "-always-overwrite", 
+            "-verbose=2",
+            "-unsupported-allow-new-glibc",
+            &format!("-qmake={}", qmake_path),
+            &format!("-qmldir={}", qmldir.display())
+        ])
         .status()
-        .map(|s| s.success())
-        .unwrap_or(false)
+        .context("Failed to execute linuxdeployqt")?;
+
+    if !status.success() {
+        anyhow::bail!("linuxdeployqt failed to bundle the application.");
+    }
+
+    println!("  Success! Portable runtime created at: {}", runtime_dir.display());
+    println!("  Launch it using: {}/AppRun", runtime_dir.display());
+
+    Ok(())
+}
+
+fn resolve_qmake_path() -> String {
+    // 1. Check env var
+    if let Ok(path) = std::env::var("QMAKE") {
+        return path;
+    }
+
+    // 2. Check for qmake6
+    if which::which("qmake6").is_ok() {
+        return "qmake6".to_string();
+    }
+
+    // 3. Check for qmake-qt6
+    if which::which("qmake-qt6").is_ok() {
+        return "qmake-qt6".to_string();
+    }
+
+    // 4. Check for qmake (could be Qt5 or broken, but it's a fallback)
+    if let Ok(output) = Command::new("qmake").arg("-v").output() {
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        if stdout.contains("Qt version 6") {
+            return "qmake".to_string();
+        }
+    }
+
+    // Default fallback
+    "qmake".to_string()
 }

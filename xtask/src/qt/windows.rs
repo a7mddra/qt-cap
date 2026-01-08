@@ -12,7 +12,6 @@ use std::process::Command;
 
 pub fn build(native_dir: &Path) -> Result<()> {
     let build_dir = native_dir.join("build");
-    let dist_dir = native_dir.join("dist");
 
     let qt_path = find_qt_path()?;
     println!("  Qt Path: {}", qt_path);
@@ -57,6 +56,15 @@ pub fn build(native_dir: &Path) -> Result<()> {
     if !status.success() {
         anyhow::bail!("CMake build failed");
     }
+
+    Ok(())
+}
+
+pub fn deploy(native_dir: &Path) -> Result<()> {
+    let build_dir = native_dir.join("build");
+    let dist_dir = native_dir.join("qt-runtime"); // Changed dist to qt-runtime for consistency
+
+    let qt_path = find_qt_path()?;
 
     println!("  Running windeployqt...");
     create_distribution(&build_dir, &dist_dir, &qt_path)?;

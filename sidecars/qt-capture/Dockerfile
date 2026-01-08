@@ -2,7 +2,7 @@
 # BUILDER IMAGE (Used by CI/CD)
 # -----------------------------------------------------------------------------
 
-FROM ubuntu:20.04
+FROM ubuntu:22.04
 
 ENV DEBIAN_FRONTEND=noninteractive
 
@@ -10,6 +10,7 @@ RUN apt-get update && apt-get install -y \
     build-essential \
     cmake \
     git \
+    wget \
     python3 \
     python3-pip \
     libglib2.0-0 \
@@ -44,6 +45,14 @@ ENV QT_PLUGIN_PATH="/opt/qt/6.6.0/gcc_64/plugins"
 
 RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
 ENV PATH="/root/.cargo/bin:${PATH}"
+
+RUN wget https://github.com/probonopd/linuxdeployqt/releases/download/continuous/linuxdeployqt-continuous-x86_64.AppImage -O /tmp/linuxdeployqt.AppImage && \
+    chmod +x /tmp/linuxdeployqt.AppImage && \
+    cd /tmp && \
+    ./linuxdeployqt.AppImage --appimage-extract && \
+    mv squashfs-root /opt/linuxdeployqt && \
+    ln -s /opt/linuxdeployqt/AppRun /usr/bin/linuxdeployqt && \
+    rm /tmp/linuxdeployqt.AppImage
 
 WORKDIR /build
 CMD ["/bin/bash"]

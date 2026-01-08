@@ -85,7 +85,7 @@ target_link_libraries(capture PRIVATE
 if(UNIX AND NOT APPLE)
     set_target_properties(capture PROPERTIES
         OUTPUT_NAME "capture-bin"
-        INSTALL_RPATH "$ORIGIN/../libs"
+        INSTALL_RPATH "$ORIGIN/../lib" 
         BUILD_WITH_INSTALL_RPATH TRUE
     )
 endif()

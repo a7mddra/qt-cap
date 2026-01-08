@@ -34,10 +34,10 @@ enum Commands {
     /// Build PaddleOCR sidecar executable
     BuildOcr,
 
-    /// Build Capture Engine (Qt + Rust wrapper)
+    /// Build Capture Engine (Qt + Rust + Package)
     BuildCapture,
 
-    /// Build Qt native only (no Rust wrapper)
+    /// Build Qt native only (CMake only, no Bundle)
     BuildCaptureQt,
 
     /// Build Tauri application for release
