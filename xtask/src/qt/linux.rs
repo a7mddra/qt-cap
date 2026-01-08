@@ -223,6 +223,7 @@ fn create_distribution(
 
     if check_command_exists("patchelf") {
         println!("  Setting RPATH with patchelf...");
+        // It is safe to patch the binary and the shared libs
         patch_rpath_recursive(&bin_dir, "lib", &libs_dir)?;
         patch_rpath_recursive(&libs_dir, "lib", &libs_dir)?;
         
@@ -408,6 +409,72 @@ fn bundle_misc_libraries(libs_dir: &Path, qt_lib_path: &Path) -> Result<()> {
             }
             if !found {
                 println!("    ! Warning: Could not find critical lib: {}", lib_name);
+            }
+        }
+    }
+    Ok(())
+}
+
+// Helper Functions that were missing in previous block
+
+fn create_runner_script(dist_dir: &Path) -> Result<()> {
+    let script = r#"#!/bin/bash
+DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+export LD_LIBRARY_PATH="$DIR/libs:$DIR/lib:$LD_LIBRARY_PATH"
+export QT_PLUGIN_PATH="$DIR/plugins"
+export QT_QPA_PLATFORM_PLUGIN_PATH="$DIR/plugins/platforms"
+export QML2_IMPORT_PATH="$DIR/qml"
+
+exec "$DIR/bin/capture-bin" "$@"
+"#;
+
+    let script_path = dist_dir.join("capture");
+    fs::write(&script_path, script)?;
+
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        fs::set_permissions(&script_path, fs::Permissions::from_mode(0o755))?;
+    }
+
+    Ok(())
+}
+
+fn patch_rpath_recursive(root: &Path, _type_hint: &str, libs_dir: &Path) -> Result<()> {
+    if !root.exists() {
+        return Ok(());
+    }
+
+    // Iterate over all files
+    for entry in walkdir::WalkDir::new(root) {
+        let entry = entry?;
+        let path = entry.path();
+        
+        if !path.is_file() {
+            continue;
+        }
+
+        // Check if it's an ELF file or .so
+        let name = path.file_name().unwrap_or_default().to_string_lossy();
+        let is_so = name.ends_with(".so") || name.contains(".so.");
+        let is_bin = path.parent().map(|p| p.ends_with("bin")).unwrap_or(false);
+
+        if is_so || is_bin {
+            // Calculate relative path from this file's directory to libs_dir
+            let file_dir = path.parent().unwrap();
+            
+            // We need to find the path from file_dir to libs_dir
+            let relative_to_libs = pathdiff::diff_paths(libs_dir, file_dir);
+
+            if let Some(rel) = relative_to_libs {
+                let origin_path = format!("$ORIGIN/{}", rel.display());
+                
+                // Run patchelf
+                let _ = Command::new("patchelf")
+                    .arg("--set-rpath")
+                    .arg(&origin_path)
+                    .arg(path)
+                    .output();
             }
         }
     }
